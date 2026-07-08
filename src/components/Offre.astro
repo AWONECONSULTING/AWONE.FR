@@ -8,12 +8,16 @@
     </div>
 
     <div class="tv" id="tv">
-      <!-- 🎬 VIDÉO : déposez le fichier "offre-awone.mp4" à côté de cette page (recommandé).
-           En attendant, la page tente le lien direct Google Drive, puis bascule
-           automatiquement sur le lecteur Drive si besoin. -->
-      <video id="offer-video" muted loop playsinline autoplay preload="metadata">
-        <source src="offre-awone.mp4" type="video/mp4">
-        <source src="https://drive.google.com/uc?export=download&amp;id=1E2i66FOVV7U_dq_DwtVXibYF8Gk6aKbC" type="video/mp4">
+      <video
+        id="offer-video"
+        muted
+        loop
+        playsinline
+        autoplay
+        preload="none"
+        data-hls-src="https://customer-dr92srjlhvwfmtbx.cloudflarestream.com/77eb1236d5986271cdf3fbfb85d11e02/manifest/video.m3u8"
+        data-dash-src="https://customer-dr92srjlhvwfmtbx.cloudflarestream.com/77eb1236d5986271cdf3fbfb85d11e02/manifest/video.mpd"
+      >
       </video>
       <button class="sound" id="sound-btn" type="button" aria-label="Activer le son de la vidéo" aria-pressed="false">
         <svg class="ic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

@@ -451,19 +451,101 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   window.addEventListener('load', init);
 })();
 
-/* ── L'offre du moment : vidéo Apple TV ── */
+/* ── L'offre du moment : vidéo verticale Cloudflare Stream ── */
 (function(){
   var tv = document.getElementById('tv');
   var video = document.getElementById('offer-video');
   var btn = document.getElementById('sound-btn');
   if(!tv || !video || !btn) return;
+  var hlsSrc = video.dataset.hlsSrc;
+  var dashSrc = video.dataset.dashSrc;
+  var playerReady = false;
+  var initPromise;
+
+  function markReady(){
+    playerReady = true;
+    if(tv.classList.contains('visible')) video.play().catch(function(){});
+  }
+
+  function initDash(){
+    if(!dashSrc || !window.MediaSource) return Promise.resolve(false);
+    return import('dashjs').then(function(mod){
+      var dashjs = mod.default || mod;
+      var dashPlayer = dashjs.MediaPlayer().create();
+      dashPlayer.initialize(video, dashSrc, false);
+      dashPlayer.updateSettings({
+        streaming: {
+          buffer: { fastSwitchEnabled: true },
+          abr: { autoSwitchBitrate: { video: true } }
+        }
+      });
+      markReady();
+      return true;
+    }).catch(function(err){
+      console.warn('Cloudflare DASH player unavailable', err);
+      return false;
+    });
+  }
+
+  function initStream(){
+    if(initPromise) return initPromise;
+    if(hlsSrc && video.canPlayType('application/vnd.apple.mpegurl')){
+      video.src = hlsSrc;
+      markReady();
+      initPromise = Promise.resolve(true);
+      return initPromise;
+    }
+    if(!hlsSrc){
+      initPromise = initDash().then(function(ok){
+        if(!ok) btn.style.display = 'none';
+        return ok;
+      });
+      return initPromise;
+    }
+    initPromise = import('hls.js').then(function(mod){
+      var Hls = mod.default || mod;
+      if(!Hls.isSupported()) return initDash();
+      var hls = new Hls({ capLevelToPlayerSize: true });
+      hls.loadSource(hlsSrc);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, markReady);
+      hls.on(Hls.Events.ERROR, function(_, data){
+        if(!data || !data.fatal) return;
+        hls.destroy();
+        initDash().then(function(ok){
+          if(!ok) btn.style.display = 'none';
+        });
+      });
+      return true;
+    }).then(function(ok){
+      if(!ok) btn.style.display = 'none';
+      return ok;
+    }).catch(function(err){
+      console.warn('Cloudflare HLS player unavailable', err);
+      return initDash().then(function(ok){
+        if(!ok) btn.style.display = 'none';
+        return ok;
+      });
+    });
+    return initPromise;
+  }
+
+  var preloadIO = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(!en.isIntersecting) return;
+      initStream();
+      preloadIO.unobserve(tv);
+    });
+  }, {rootMargin:'900px 0px', threshold:0});
+  preloadIO.observe(tv);
 
   /* Apparition de l'écran + lecture uniquement quand visible */
   var io = new IntersectionObserver(function(entries){
     entries.forEach(function(en){
       if(en.isIntersecting){
         tv.classList.add('visible');
-        video.play().catch(function(){});
+        initStream();
+        if(playerReady || video.readyState > 0) video.play().catch(function(){});
       } else {
         video.pause();
       }
@@ -481,21 +563,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
     if(!video.muted) video.play().catch(function(){});
   });
 
-  /* Secours : si aucune source directe ne charge, bascule sur le lecteur Drive
-     (lecture assurée, mais bouton son natif Drive dans ce mode) */
-  video.addEventListener('error', driveFallback, true);
-  var lastSource = video.querySelector('source:last-of-type');
-  if(lastSource) lastSource.addEventListener('error', driveFallback);
-  function driveFallback(){
-    if(tv.dataset.fallback) return;
-    tv.dataset.fallback = '1';
-    var iframe = document.createElement('iframe');
-    iframe.src = 'https://drive.google.com/file/d/1E2i66FOVV7U_dq_DwtVXibYF8Gk6aKbC/preview';
-    iframe.allow = 'autoplay; fullscreen';
-    iframe.title = "L'offre du moment AWONE";
-    video.replaceWith(iframe);
-    btn.style.display = 'none';
-  }
+  video.addEventListener('loadedmetadata', markReady);
 })();
 
 /* ── Menu burger ── */

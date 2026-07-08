@@ -58,7 +58,7 @@ de toute façon une connexion ; iClosed refuse `file://` (voir échange précéd
 1. **Activer gzip/brotli** sur le serveur (Apache/Nginx/o2switch : souvent déjà actif).
    Brotli ferait encore ~-15% sur HTML/CSS/JS.
 2. **Cache long** sur `/_astro/*`, `/assets/*`, `/icons/*` (immutable, 1 an).
-3. Déposer `offre-awone.mp4` à la racine pour la section vidéo (sinon fallback Drive).
+3. Vérifier la lecture Cloudflare Stream de la section vidéo après chaque changement de lecteur.
 4. Lancer **PageSpeed Insights** une fois en ligne (l'audit Lighthouse complet
    nécessite Chrome, indisponible dans cet environnement de build — les mesures
    ci-dessus sont des poids réels, pas des estimations).
