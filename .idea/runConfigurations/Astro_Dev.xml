@@ -5,8 +5,11 @@
     <scripts>
       <script value="dev" />
     </scripts>
-    <node-interpreter value="project" />
-    <envs />
+    <node-interpreter value="/Users/WANIS/Library/Caches/JetBrains/IntelliJIdea2026.1/acp-agents/.runtimes/node/24.13.0/bin/node" />
+    <package-manager value="/Users/WANIS/Library/Caches/JetBrains/IntelliJIdea2026.1/acp-agents/.runtimes/node/24.13.0/bin/npm" />
+    <envs>
+      <env name="ASTRO_TELEMETRY_DISABLED" value="1" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>

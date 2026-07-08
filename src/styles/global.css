@@ -255,6 +255,10 @@ body.menu-open{overflow:hidden}
 }
 .member:hover{transform:translateY(-6px);border-color:color-mix(in srgb, var(--c) 50%, transparent)}
 .member h3{font-family:var(--font-titre);font-weight:600;font-size:1.15rem;margin-bottom:.25rem}
+.member--mehdi{
+  border-color:color-mix(in srgb, var(--orange) 34%, transparent);
+  background:linear-gradient(180deg, color-mix(in srgb, var(--orange) 7%, transparent), rgba(252,252,252,.03) 42%);
+}
 .member .role{font-size:.8rem;font-weight:600;color:var(--c);margin-bottom:.75rem}
 .member p{font-size:.82rem;line-height:1.6;color:rgba(252,252,252,.55)}
 @media (max-width:880px){.team-grid{grid-template-columns:1fr}}
