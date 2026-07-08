@@ -1,18 +1,33 @@
 ---
 import '../styles/global.css';
+
+const siteName = 'AWONE';
+const title = 'AWONE - On ne vend pas du rêve, on le réalise.';
+const description = 'AWONE accompagne les entrepreneurs, marques et entreprises dans la structuration, la valorisation et la croissance de leurs projets. Stratégie, identité, web, contenus, acquisition.';
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+const ogImage = new URL('/assets/logo-blanc-full.png', Astro.site).toString();
 ---
 <!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0A0A0A" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230A0A0A'/%3E%3Ccircle cx='32' cy='32' r='13' fill='%23FFFF7D'/%3E%3C/svg%3E">
-    <meta property="og:title" content="AWONE — On ne vend pas du rêve, on le réalise.">
-    <meta property="og:description" content="Agence de consulting, marketing &amp; développement commercial. Stratégie, identité, web, contenus et acquisition — un accompagnement complet et structuré.">
+    <title>{title}</title>
+    <meta name="description" content={description}>
+    <link rel="canonical" href={canonical} />
+    <meta property="og:site_name" content={siteName}>
+    <meta property="og:title" content={title}>
+    <meta property="og:description" content={description}>
     <meta property="og:type" content="website">
     <meta property="og:locale" content="fr_FR">
-    <title>AWONE — On ne vend pas du rêve, on le réalise.</title>
-    <meta name="description" content="AWONE accompagne les entrepreneurs, marques et entreprises dans la structuration, la valorisation et la croissance de leurs projets. Stratégie, identité, web, contenus, acquisition.">
+    <meta property="og:url" content={canonical}>
+    <meta property="og:image" content={ogImage}>
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content={title}>
+    <meta name="twitter:description" content={description}>
+    <meta name="twitter:image" content={ogImage}>
     <link rel="preconnect" href="https://api.fontshare.com" />
     <link href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
     <link rel="preload" as="image" href="/assets/logo-awone.webp" />

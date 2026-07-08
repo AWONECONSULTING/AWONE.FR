@@ -61,18 +61,6 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   window.addEventListener('load', function(){ ScrollTrigger.refresh(); });
 })();
 
-/* ── Spotlight qui suit la souris ── */
-(function(){
-  var hero = document.querySelector('.hero');
-  var spot = document.getElementById('spot');
-  if(!hero || !spot) return;
-  hero.addEventListener('mousemove', function(e){
-    var r = hero.getBoundingClientRect();
-    spot.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
-    spot.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
-  });
-})();
-
 /* ── Reveal au scroll (cascade) ── */
 (function(){
   var mobile = window.matchMedia('(max-width:768px)').matches;
