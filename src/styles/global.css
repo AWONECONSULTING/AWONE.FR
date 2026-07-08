@@ -302,7 +302,7 @@ footer img{height:22px;width:auto}
 footer .links{display:flex;gap:1.8rem;font-size:.8rem;color:rgba(252,252,252,.55)}
 footer .links a{text-decoration:none;transition:color .25s}
 footer .links a:hover{color:var(--jaune)}
-footer .copy{font-size:.72rem;color:rgba(252,252,252,.35)}
+footer .copy{font-size:.72rem;color:rgba(252,252,252,.62)}
 
 /* ── Animations communes ─────────────────────────────── */
 @keyframes up{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}

@@ -284,16 +284,40 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   });
 })();
 
-/* ── CTA iClosed : popup sans navigation (le lien reste le secours) ──
-   Le widget ouvre le popup mais n'annule pas le href : on bloque la
-   navigation UNIQUEMENT quand le script iClosed est chargé. Sans lui
-   (bloqueur, hors-ligne), le lien classique reprend la main. ── */
+/* ── CTA iClosed : chargement tardif, le lien reste le secours ── */
 (function(){
+  var loading;
+  function loadIclosed(){
+    if(window.__icwReady) return;
+    if(loading) return;
+    loading = true;
+    var s = document.createElement('script');
+    s.src = 'https://app.iclosed.io/assets/widget.js';
+    s.async = true;
+    s.onload = function(){ window.__icwReady = 1; };
+    s.onerror = function(){ loading = false; };
+    document.head.appendChild(s);
+  }
+
   document.querySelectorAll('a[data-embed-type="popup"]').forEach(function(a){
+    a.addEventListener('pointerenter', loadIclosed, {passive:true});
+    a.addEventListener('focus', loadIclosed);
     a.addEventListener('click', function(e){
       if(window.__icwReady){ e.preventDefault(); }
+      else { loadIclosed(); }
     });
   });
+
+  var contact = document.getElementById('contact');
+  if(contact && 'IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      if(entries.some(function(en){ return en.isIntersecting; })){
+        loadIclosed();
+        io.disconnect();
+      }
+    }, {rootMargin:'700px 0px'});
+    io.observe(contact);
+  }
 })();
 
 /* ── Carrousel de marques : boucle infinie, focus central, surbrillance ── */

@@ -28,9 +28,10 @@ const ogImage = new URL('/assets/logo-blanc-full.png', Astro.site).toString();
     <meta name="twitter:title" content={title}>
     <meta name="twitter:description" content={description}>
     <meta name="twitter:image" content={ogImage}>
-    <link rel="preconnect" href="https://api.fontshare.com" />
-    <link href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
-    <link rel="preload" as="image" href="/assets/logo-awone.webp" />
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+    <link href="https://api.fontshare.com/v2/css?f[]=clash-display@600&f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="/assets/logo-awone-nav.webp" />
   </head>
   <body>
     <slot />
