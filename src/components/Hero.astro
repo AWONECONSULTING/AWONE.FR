@@ -1,0 +1,44 @@
+<!-- ══════════════ HERO ══════════════ -->
+<!-- ══════════════ HERO ÉDITORIAL + TRANSITION CINÉMATIQUE ══════════════
+     Inspiré de la logique UpSunday : hero clair très typographique, puis au
+     scroll la carte centrale se déforme en surface 3D et devient la matière
+     de la section suivante. Piloté par GSAP ScrollTrigger (scrub), avec
+     fallback statique propre sans GSAP ou en mouvement réduit. -->
+<div class="hero-transition" id="top" data-tint="space">
+  <section class="hero-stage" aria-label="AWONE — On ne vend pas du rêve, on le réalise">
+    <div class="ht-bg" aria-hidden="true"></div>
+    <div class="ht-dark" aria-hidden="true"></div>
+
+    <div class="ht-inner">
+      <p class="ht-kicker"><span class="live-dot" aria-hidden="true"></span> Agence de consulting, marketing &amp; développement commercial</p>
+      <h1 class="ht-title">
+        <span class="l">On ne vend pas du <span class="nw">rêve<span class="ht-chip c1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 1 3.6 10.8c-.6.5-.6 1.2-.6 2.2h-6c0-1-.0-1.7-.6-2.2A6 6 0 0 1 12 3z"/></svg></span>,</span></span>
+        <span class="l">on le <span class="nw"><em>réalise</em><span class="ht-chip c2" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></span>.</span>
+          <svg class="ht-arrow" viewBox="0 0 120 62" aria-hidden="true"><path d="M8 10 C 38 54, 78 54, 106 28" fill="none" stroke="var(--orange)" stroke-width="5" stroke-linecap="round"/><path d="M94 22 L108 26 L100 40" fill="none" stroke="var(--orange)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </h1>
+      <p class="ht-sub">Un échange humain pour comprendre votre projet, identifier vos priorités et voir comment AWONE peut concrètement vous aider.</p>
+      <div class="ht-cta-zone">
+        <a class="cta" href="https://app.iclosed.io/e/AWONE/RDV-Decouverte-AWONE" data-iclosed-link="https://app.iclosed.io/e/AWONE/RDV-Decouverte-AWONE" data-embed-type="popup" target="_blank" rel="noopener noreferrer">Réserver un diagnostic gratuit</a>
+      </div>
+      <p class="ht-services">Digital <i>·</i> Web <i>·</i> Branding <i>·</i> Creative Branding <i>·</i> Immersive <i>·</i> Motion <i>·</i> Social Culture</p>
+    </div>
+
+    <!-- La carte qui se métamorphose en surface 3D au scroll -->
+    <div class="morph-pos">
+      <figure class="morph-card">
+        <div class="mc-inner">
+          <img class="mc-logo" src="/assets/logo-blanc-full.png" alt="" width="3001" height="517">
+          <p class="mc-line">L'idée devient <b>marque</b>.</p>
+          <a class="mc-cta" href="https://app.iclosed.io/e/AWONE/RDV-Decouverte-AWONE" data-iclosed-link="https://app.iclosed.io/e/AWONE/RDV-Decouverte-AWONE" data-embed-type="popup" target="_blank" rel="noopener noreferrer">Diagnostic gratuit</a>
+          <div class="mc-dots">
+            <i style="--c:var(--lavande)"></i><i style="--c:var(--jaune)"></i><i style="--c:var(--bleu)"></i><i style="--c:var(--orange)"></i><i style="--c:var(--rose)"></i><i style="--c:var(--vert)"></i>
+          </div>
+        </div>
+      </figure>
+    </div>
+    <p class="mc-cap" aria-hidden="true">De l'idée à la réalisation.</p>
+
+    <p class="ht-hint" aria-hidden="true">Défiler</p>
+  </section>
+</div>
