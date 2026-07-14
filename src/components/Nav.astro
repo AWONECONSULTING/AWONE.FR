@@ -1,3 +1,7 @@
+---
+import { ICLOSED_DIAGNOSTIC_URL } from '../config/links';
+---
+
 <!-- ══════════════ NAV ══════════════ -->
 <nav>
   <a class="brand" href="#top" aria-label="AWONE — accueil">
@@ -10,7 +14,7 @@
     <li><a href="#equipe">L'équipe</a></li>
     <li><a href="#contact">Contact</a></li>
   </ul>
-  <a class="nav-cta" href="https://app.iclosed.io/e/AWONE/RDV-Decouverte-AWONE" data-iclosed-link="https://app.iclosed.io/e/AWONE/RDV-Decouverte-AWONE" data-embed-type="popup" target="_blank" rel="noopener noreferrer">Diagnostic gratuit</a>
+  <a class="nav-cta" href={ICLOSED_DIAGNOSTIC_URL} data-iclosed-link={ICLOSED_DIAGNOSTIC_URL} data-embed-type="popup" target="_blank" rel="noopener noreferrer">Diagnostic gratuit</a>
   <button class="burger" id="burger" aria-label="Menu" aria-expanded="false">
     <span></span><span></span><span></span>
   </button>

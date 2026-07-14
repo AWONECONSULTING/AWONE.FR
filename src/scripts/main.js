@@ -169,93 +169,162 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   poles.forEach(function(p){ io.observe(p); });
 })();
 
-/* ── Situations : roue libre façon Netflix — inertie au doigt comme à la
-     souris, puis pose douce sur une carte alignée : les cartes visibles
-     sont toujours entières. ── */
+/* ── Situations : carrousel infini façon Apple TV — focus central,
+     inertie douce et retour invisible au début/à la fin. ── */
 (function(){
   var c = document.getElementById('situationsCarousel');
   if(!c) return;
-  var cards = Array.prototype.slice.call(c.querySelectorAll('.situation-card'));
+  var originals = Array.prototype.slice.call(c.querySelectorAll('.situation-card'));
+  var N = originals.length;
+  if(!N) return;
 
-  function positions(){
-    var base = cards[0].offsetLeft;
-    return cards.map(function(k){ return k.offsetLeft - base; });
+  var before = document.createDocumentFragment();
+  var after = document.createDocumentFragment();
+  originals.forEach(function(card){
+    var pre = card.cloneNode(true);
+    var post = card.cloneNode(true);
+    pre.setAttribute('aria-hidden', 'true');
+    post.setAttribute('aria-hidden', 'true');
+    before.appendChild(pre);
+    after.appendChild(post);
+  });
+  c.insertBefore(before, c.firstChild);
+  c.appendChild(after);
+
+  var cards = Array.prototype.slice.call(c.querySelectorAll('.situation-card'));
+  var setW = 0, current = -1, idle, raf;
+  var down = false, flinging = false;
+  var sx = 0, ss = 0, moved = false, vel = 0, lastX = 0, lastT = 0, flingRaf;
+
+  function center(el){ return el.offsetLeft + el.offsetWidth / 2; }
+  function targetFor(i){ return center(cards[i]) - c.clientWidth / 2; }
+  function measure(){
+    setW = center(cards[N]) - center(cards[0]);
   }
-  function maxScroll(){ return c.scrollWidth - c.clientWidth; }
-  function nearestIndex(){
-    var pos = positions(), x = c.scrollLeft, best = 0, d = Infinity;
-    for(var i = 0; i < pos.length; i++){
-      var dd = Math.abs(pos[i] - x);
-      if(dd < d){ d = dd; best = i; }
+  function jumpToMiddle(){
+    var prev = c.style.scrollBehavior;
+    c.style.scrollBehavior = 'auto';
+    c.scrollLeft = targetFor(N);
+    c.style.scrollBehavior = prev;
+    current = -1;
+    focusClosest();
+  }
+  function focusClosest(){
+    var mid = c.scrollLeft + c.clientWidth / 2;
+    var best = 0, dist = Infinity;
+    for(var i = 0; i < cards.length; i++){
+      var d = Math.abs(center(cards[i]) - mid);
+      if(d < dist){ dist = d; best = i; }
+    }
+    if(best !== current){
+      cards.forEach(function(card, i){
+        var on = i === best;
+        card.classList.toggle('is-active', on);
+        if(!card.hasAttribute('aria-hidden')) card.setAttribute('aria-current', on ? 'true' : 'false');
+      });
+      current = best;
     }
     return best;
   }
+  function loopFix(){
+    var b = focusClosest();
+    if(!setW) return b;
+    if(b < N || b >= 2 * N){
+      var prev = c.style.scrollBehavior;
+      c.style.scrollBehavior = 'auto';
+      c.scrollLeft += b < N ? setW : -setW;
+      c.style.scrollBehavior = prev;
+      current = -1;
+      b = focusClosest();
+    }
+    return b;
+  }
   function goToIndex(i){
-    var pos = positions();
-    i = Math.max(0, Math.min(pos.length - 1, i));
-    var target = Math.min(pos[i], maxScroll());
-    c.scrollTo({left: target, behavior:'smooth'});
+    c.scrollTo({left: targetFor(i), behavior:'smooth'});
   }
-  function perView(){
-    return window.innerWidth > 1024 ? 3 : (window.innerWidth > 640 ? 2 : 1);
+  function step(dir){
+    var b = loopFix();
+    goToIndex(b + dir);
   }
-
-  /* pose douce après l'inertie (tactile ou molette) */
-  var down = false, flinging = false, idle;
   function settle(){
     if(down || flinging) return;
-    var pos = positions()[nearestIndex()];
-    var target = Math.min(pos, maxScroll());
-    if(Math.abs(c.scrollLeft - target) > 2 && c.scrollLeft < maxScroll() - 2){
+    var b = loopFix();
+    var target = targetFor(b);
+    if(Math.abs(c.scrollLeft - target) > 2){
       c.scrollTo({left: target, behavior:'smooth'});
     }
   }
-  c.addEventListener('scroll', function(){
-    clearTimeout(idle);
-    idle = setTimeout(settle, 150);
-  }, {passive:true});
-
-  c.addEventListener('keydown', function(e){
-    if(e.key === 'ArrowRight'){ e.preventDefault(); goToIndex(nearestIndex() + perView()); }
-    if(e.key === 'ArrowLeft'){ e.preventDefault(); goToIndex(nearestIndex() - perView()); }
-  });
-
-  /* drag souris : élan + friction, comme le rouleau des grandes marques */
-  var sx = 0, ss = 0, moved = false, vel = 0, lastX = 0, lastT = 0, flingRaf;
   function stopFling(){ flinging = false; cancelAnimationFrame(flingRaf); }
   function fling(){
     flinging = true;
     (function roll(){
       if(!flinging) return;
       c.scrollLeft -= vel * 16;
-      vel *= 0.94;
-      if(c.scrollLeft <= 0 || c.scrollLeft >= maxScroll()) vel *= 0.6; /* bords amortis */
+      vel *= 0.935;
+      loopFix();
       if(Math.abs(vel) > 0.04){ flingRaf = requestAnimationFrame(roll); }
       else { flinging = false; settle(); }
     })();
   }
+
+  c.addEventListener('scroll', function(){
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(focusClosest);
+    clearTimeout(idle);
+    idle = setTimeout(function(){ loopFix(); settle(); }, 120);
+  }, {passive:true});
+
+  c.addEventListener('wheel', function(e){
+    var delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+    if(!delta) return;
+    e.preventDefault();
+    stopFling();
+    c.scrollLeft += delta;
+    loopFix();
+    clearTimeout(idle);
+    idle = setTimeout(settle, 120);
+  }, {passive:false});
+
+  c.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowRight'){ e.preventDefault(); step(1); }
+    if(e.key === 'ArrowLeft'){ e.preventDefault(); step(-1); }
+  });
+
   c.addEventListener('pointerdown', function(e){
-    if(e.pointerType !== 'mouse') return;
     stopFling();
     down = true; moved = false;
     sx = e.clientX; ss = c.scrollLeft;
     lastX = e.clientX; lastT = performance.now(); vel = 0;
     c.classList.add('dragging');
+    c.setPointerCapture && c.setPointerCapture(e.pointerId);
   });
-  window.addEventListener('pointermove', function(e){
+  c.addEventListener('pointermove', function(e){
     if(!down) return;
     if(Math.abs(e.clientX - sx) > 4) moved = true;
     c.scrollLeft = ss - (e.clientX - sx);
     var now = performance.now(), dt = now - lastT;
     if(dt > 0){ vel = (e.clientX - lastX) / dt; lastX = e.clientX; lastT = now; }
+    loopFix();
   });
-  window.addEventListener('pointerup', function(){
+  function endDrag(e){
     if(!down) return;
     down = false; c.classList.remove('dragging');
+    c.releasePointerCapture && e && c.releasePointerCapture(e.pointerId);
     if(!moved) return;
     if(Math.abs(vel) > 0.25){ fling(); }
     else { settle(); }
+  }
+  c.addEventListener('pointerup', endDrag);
+  c.addEventListener('pointercancel', endDrag);
+
+  window.addEventListener('resize', function(){
+    measure();
+    loopFix();
+    settle();
   });
+
+  measure();
+  requestAnimationFrame(jumpToMiddle);
 })();
 
 /* ── Lueur qui suit la souris sur la section situations (réf. UpSunday) ── */
@@ -299,13 +368,15 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
     document.head.appendChild(s);
   }
 
-  document.querySelectorAll('a[data-embed-type="popup"]').forEach(function(a){
+  document.querySelectorAll('[data-iclosed-link][data-embed-type="popup"]').forEach(function(a){
+    var fallbackUrl = a.getAttribute('data-iclosed-link');
+    if(fallbackUrl && !a.getAttribute('href')) a.setAttribute('href', fallbackUrl);
+    if(!a.getAttribute('target')) a.setAttribute('target', '_blank');
+    if(!a.getAttribute('rel')) a.setAttribute('rel', 'noopener noreferrer');
+
     a.addEventListener('pointerenter', loadIclosed, {passive:true});
     a.addEventListener('focus', loadIclosed);
-    a.addEventListener('click', function(e){
-      if(window.__icwReady){ e.preventDefault(); }
-      else { loadIclosed(); }
-    });
+    a.addEventListener('click', loadIclosed);
   });
 
   var contact = document.getElementById('contact');
@@ -589,4 +660,3 @@ document.getElementById('year').textContent = new Date().getFullYear();
   if(!sticky) return;
   setTimeout(function(){ sticky.classList.add('show'); }, 900);
 })();
-
