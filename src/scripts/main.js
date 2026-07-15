@@ -53,11 +53,6 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
       opacity:0, y:50, duration:.9, ease:'power3.out',
       scrollTrigger:{ trigger:'.situations-carousel', start:'top 88%' }
     });
-    gsap.from('.situation-card', {
-      opacity:0, scale:.94, duration:.9, stagger:.1, ease:'power3.out',
-      transformOrigin:'50% 100%',
-      scrollTrigger:{ trigger:'.situations-carousel', start:'top 88%' }
-    });
   window.addEventListener('load', function(){ ScrollTrigger.refresh(); });
 })();
 
@@ -180,13 +175,21 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
   var before = document.createDocumentFragment();
   var after = document.createDocumentFragment();
+  function makeClone(card){
+    var clone = card.cloneNode(true);
+
+    /* GSAP pose son etat d'entree en style inline avant cette initialisation.
+       Une copie doit repartir de la CSS, sinon elle reste invisible. */
+    clone.removeAttribute('style');
+    clone.classList.remove('is-active');
+    clone.removeAttribute('aria-current');
+    clone.setAttribute('aria-hidden', 'true');
+    clone.setAttribute('data-carousel-clone', '');
+    return clone;
+  }
   originals.forEach(function(card){
-    var pre = card.cloneNode(true);
-    var post = card.cloneNode(true);
-    pre.setAttribute('aria-hidden', 'true');
-    post.setAttribute('aria-hidden', 'true');
-    before.appendChild(pre);
-    after.appendChild(post);
+    before.appendChild(makeClone(card));
+    after.appendChild(makeClone(card));
   });
   c.insertBefore(before, c.firstChild);
   c.appendChild(after);
