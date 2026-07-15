@@ -356,9 +356,11 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   });
 })();
 
-/* ── CTA iClosed : chargement tardif, le lien reste le secours ── */
+/* ── CTA iClosed : popup uniquement, sans quitter la landing page ── */
 (function(){
-  var loading;
+  var loading = false;
+  var pendingTrigger = null;
+
   function loadIclosed(){
     if(window.__icwReady) return;
     if(loading) return;
@@ -366,32 +368,33 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
     var s = document.createElement('script');
     s.src = 'https://app.iclosed.io/assets/widget.js';
     s.async = true;
-    s.onload = function(){ window.__icwReady = 1; };
-    s.onerror = function(){ loading = false; };
+    s.onload = function(){
+      window.__icwReady = 1;
+      if(pendingTrigger){
+        var trigger = pendingTrigger;
+        pendingTrigger = null;
+        requestAnimationFrame(function(){ trigger.click(); });
+      }
+    };
+    s.onerror = function(){
+      loading = false;
+      pendingTrigger = null;
+    };
     document.head.appendChild(s);
   }
 
-  document.querySelectorAll('[data-iclosed-link][data-embed-type="popup"]').forEach(function(a){
-    var fallbackUrl = a.getAttribute('data-iclosed-link');
-    if(fallbackUrl && !a.getAttribute('href')) a.setAttribute('href', fallbackUrl);
-    if(!a.getAttribute('target')) a.setAttribute('target', '_blank');
-    if(!a.getAttribute('rel')) a.setAttribute('rel', 'noopener noreferrer');
-
-    a.addEventListener('pointerenter', loadIclosed, {passive:true});
-    a.addEventListener('focus', loadIclosed);
-    a.addEventListener('click', loadIclosed);
+  document.querySelectorAll('[data-iclosed-link][data-embed-type="popup"]').forEach(function(trigger){
+    trigger.removeAttribute('href');
+    trigger.removeAttribute('target');
+    trigger.removeAttribute('rel');
+    trigger.addEventListener('click', function(){
+      if(window.__icwReady) return;
+      pendingTrigger = trigger;
+      loadIclosed();
+    });
   });
 
-  var contact = document.getElementById('contact');
-  if(contact && 'IntersectionObserver' in window){
-    var io = new IntersectionObserver(function(entries){
-      if(entries.some(function(en){ return en.isIntersecting; })){
-        loadIclosed();
-        io.disconnect();
-      }
-    }, {rootMargin:'700px 0px'});
-    io.observe(contact);
-  }
+  loadIclosed();
 })();
 
 /* ── Carrousel de marques : boucle infinie, focus central, surbrillance ── */
