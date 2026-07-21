@@ -1,0 +1,68 @@
+---
+/* Texte éditorial de la séquence — volontairement centralisé ici pour
+   pouvoir être ajusté sans toucher au canvas ni à l'animation. */
+const eyebrow = 'Immersive · Motion';
+const title = 'On élève votre marque.';
+const subtitle = 'Embarquez dans le train avec votre équipe dédiée AWONE';
+---
+
+<!-- ══════════════ SÉQUENCE IMMERSIVE AU SCROLL ══════════════ -->
+<section
+  class="immersive-sequence"
+  id="immersion"
+  data-tint="cinema"
+  data-frame-root="/frames/immersive"
+  data-desktop-frames="181"
+  data-mobile-frames="91"
+  aria-labelledby="immersive-title"
+>
+  <div class="immersive-stage">
+    <canvas class="immersive-canvas" aria-hidden="true"></canvas>
+    <div class="immersive-shade" aria-hidden="true"></div>
+    <div class="immersive-transition-wash" aria-hidden="true"></div>
+
+    <div class="immersive-copy">
+      <p class="immersive-eyebrow">{eyebrow}</p>
+      <h2 id="immersive-title">{title}</h2>
+      <p class="immersive-subtitle">{subtitle}</p>
+    </div>
+
+    <div class="immersive-loader" role="status" aria-live="polite">
+      <span class="immersive-loader-label">Préparation de l'ascension</span>
+      <span class="immersive-loader-track" aria-hidden="true"><i></i></span>
+      <span class="immersive-loader-value">0%</span>
+    </div>
+
+    <p class="immersive-hint" aria-hidden="true">
+      <span>Défiler pour s'élever</span>
+      <i></i>
+    </p>
+
+    <div class="immersive-exit" aria-hidden="true">
+      <div class="immersive-spinner">
+        <span class="immersive-spinner-ring immersive-spinner-ring-a"></span>
+        <span class="immersive-spinner-ring immersive-spinner-ring-b"></span>
+        <img
+          class="immersive-spinner-logo"
+          src="/assets/logo-awone.webp"
+          alt=""
+          width="900"
+          height="155"
+          loading="lazy"
+          decoding="async"
+        >
+      </div>
+      <span class="immersive-exit-label">La suite · Nos pôles</span>
+    </div>
+
+    <noscript>
+      <img
+        class="immersive-poster"
+        src="/frames/immersive/desktop/frame_0091.webp"
+        alt="Ascension au-dessus des nuages dans une scène cinématographique dorée"
+        width="1080"
+        height="1934"
+      >
+    </noscript>
+  </div>
+</section>

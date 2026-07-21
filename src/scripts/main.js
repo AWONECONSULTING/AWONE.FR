@@ -1,11 +1,43 @@
 /* ── Animations GSAP (bundle local : fonctionne aussi hors-ligne) ── */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from 'lenis';
+import 'lenis/dist/lenis.css';
+
+gsap.registerPlugin(ScrollTrigger);
+
+/* ── Défilement principal : Lenis alimente le même ticker que GSAP.
+     Les deux carrousels horizontaux restent gérés nativement. ── */
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduced) return;
+
+  var lenis = new Lenis({
+    lerp:.09,
+    smoothWheel:true,
+    syncTouch:false,
+    wheelMultiplier:.95,
+    anchors:{offset:-72},
+    stopInertiaOnNavigate:true,
+    prevent:function(node){
+      if(!(node instanceof Element)) return false;
+      if(node.closest('.brands-track,.situations-carousel')) return true;
+      var methodReel = node.closest('.method-steps');
+      if(!methodReel) return false;
+      var methodOverflow = getComputedStyle(methodReel).overflowY;
+      return /auto|scroll/.test(methodOverflow) && methodReel.scrollHeight > methodReel.clientHeight + 1;
+    }
+  });
+
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add(function(time){ lenis.raf(time * 1000); });
+  gsap.ticker.lagSmoothing(0);
+  window.__awoneLenis = lenis;
+})();
 
 (function(){
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(reduced){ document.documentElement.classList.add('no-gsap'); return; }
-    gsap.registerPlugin(ScrollTrigger);
     var mm = gsap.matchMedia();
     mm.add({ desktop:'(min-width:761px)', mobile:'(max-width:760px)' }, function(ctx){
       var mob = ctx.conditions.mobile;
@@ -54,6 +86,722 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
       scrollTrigger:{ trigger:'.situations-carousel', start:'top 88%' }
     });
   window.addEventListener('load', function(){ ScrollTrigger.refresh(); });
+})();
+
+/* ── Immersive / Motion : séquence WebP pilotée au scroll sur canvas.
+     Les fichiers sont préchargés sous forme compressée ; seules les frames
+     proches de la position courante sont décodées et gardées en mémoire. ── */
+(function(){
+  var section = document.querySelector('.immersive-sequence');
+  if(!section) return;
+
+  var stage = section.querySelector('.immersive-stage');
+  var canvas = section.querySelector('.immersive-canvas');
+  var copy = section.querySelector('.immersive-copy');
+  var hint = section.querySelector('.immersive-hint');
+  var loader = section.querySelector('.immersive-loader');
+  var loaderLabel = section.querySelector('.immersive-loader-label');
+  var loaderBar = section.querySelector('.immersive-loader-track i');
+  var loaderValue = section.querySelector('.immersive-loader-value');
+  var transitionWash = section.querySelector('.immersive-transition-wash');
+  var exitScene = section.querySelector('.immersive-exit');
+  var spinnerLogo = section.querySelector('.immersive-spinner-logo');
+  var exitLabel = section.querySelector('.immersive-exit-label');
+  var context = canvas && canvas.getContext('2d', {alpha:false, desynchronized:true});
+  if(!stage || !canvas || !context) return;
+
+  var mobile = window.matchMedia('(max-width:760px), (max-width:932px) and (max-height:560px) and (orientation:landscape)').matches;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var saveData = Boolean(navigator.connection && navigator.connection.saveData);
+  var staticMode = reduced || saveData;
+  var frameCount = parseInt(section.dataset[mobile ? 'mobileFrames' : 'desktopFrames'], 10);
+  var frameRoot = section.dataset.frameRoot + '/' + (mobile ? 'mobile' : 'desktop');
+  var cacheLimit = mobile ? 10 : 12;
+  var decodeLimit = mobile ? 2 : 3;
+
+  var blobs = new Array(frameCount);
+  var fetches = new Array(frameCount);
+  var decoded = new Map();
+  var decodePromises = new Map();
+  var decodeQueue = [];
+  var activeDecodes = 0;
+  var completed = 0;
+  var desired = staticMode ? Math.round((frameCount - 1) * .5) : 0;
+  var rendered = -1;
+  var direction = 1;
+  var prefetchStarted = false;
+  var drawRaf = 0;
+  var resizeRaf = 0;
+
+  function clamp(index){ return Math.max(0, Math.min(frameCount - 1, index)); }
+  function frameUrl(index){
+    return frameRoot + '/frame_' + String(index + 1).padStart(4, '0') + '.webp';
+  }
+
+  function setProgress(value){
+    var progress = Math.max(0, Math.min(1, value));
+    loaderBar.style.transform = 'scaleX(' + progress + ')';
+    loaderValue.textContent = Math.round(progress * 100) + '%';
+  }
+
+  function finishRequest(){
+    completed++;
+    setProgress(completed / frameCount);
+    if(completed >= frameCount){
+      section.classList.add('is-loaded');
+      loader.setAttribute('aria-label', 'Expérience immersive chargée');
+    }
+  }
+
+  function fetchFrame(index){
+    index = clamp(index);
+    if(blobs[index]) return Promise.resolve(blobs[index]);
+    if(fetches[index]) return fetches[index];
+
+    fetches[index] = fetch(frameUrl(index), {cache:'force-cache'})
+      .then(function(response){
+        if(!response.ok) throw new Error('Frame ' + (index + 1) + ' indisponible');
+        return response.blob();
+      })
+      .then(function(blob){ blobs[index] = blob; return blob; })
+      .catch(function(){ return null; })
+      .finally(finishRequest);
+    return fetches[index];
+  }
+
+  function drawableFromBlob(blob){
+    if('createImageBitmap' in window) return createImageBitmap(blob);
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(blob);
+      var image = new Image();
+      image.decoding = 'async';
+      image.onload = function(){ URL.revokeObjectURL(url); resolve(image); };
+      image.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('Décodage impossible')); };
+      image.src = url;
+    });
+  }
+
+  function closeDrawable(drawable){
+    if(drawable && typeof drawable.close === 'function') drawable.close();
+  }
+
+  function trimDecoded(){
+    while(decoded.size > cacheLimit){
+      var victim = -1;
+      var farthest = -1;
+      decoded.forEach(function(drawable, index){
+        var distance = Math.abs(index - desired);
+        if(index !== rendered && index !== desired && distance > farthest){
+          victim = index;
+          farthest = distance;
+        }
+      });
+      if(victim < 0) break;
+      closeDrawable(decoded.get(victim));
+      decoded.delete(victim);
+    }
+  }
+
+  function storeDrawable(index, drawable){
+    if(!drawable) return;
+    if(decoded.has(index)) closeDrawable(decoded.get(index));
+    decoded.set(index, drawable);
+    trimDecoded();
+    section.classList.add('is-ready');
+    if(staticMode){
+      setProgress(1);
+      section.classList.add('is-loaded');
+      loader.setAttribute('aria-label', 'Expérience immersive chargée');
+    }
+    scheduleDraw();
+  }
+
+  function pumpDecodeQueue(){
+    while(activeDecodes < decodeLimit && decodeQueue.length){
+      (function(job){
+        activeDecodes++;
+        fetchFrame(job.index)
+          .then(function(blob){ return blob ? drawableFromBlob(blob) : null; })
+          .then(function(drawable){
+            if(drawable) storeDrawable(job.index, drawable);
+            job.resolve(drawable);
+          })
+          .catch(function(){ job.resolve(null); })
+          .finally(function(){
+            activeDecodes--;
+            decodePromises.delete(job.index);
+            pumpDecodeQueue();
+          });
+      })(decodeQueue.shift());
+    }
+  }
+
+  function queueDecode(index, priority){
+    index = clamp(index);
+    if(decoded.has(index)) return Promise.resolve(decoded.get(index));
+    if(decodePromises.has(index)) return decodePromises.get(index);
+
+    var resolveJob;
+    var promise = new Promise(function(resolve){ resolveJob = resolve; });
+    decodePromises.set(index, promise);
+    var job = {index:index, resolve:resolveJob};
+    if(priority) decodeQueue.unshift(job); else decodeQueue.push(job);
+    pumpDecodeQueue();
+    return promise;
+  }
+
+  function drawableWidth(drawable){ return drawable.naturalWidth || drawable.width; }
+  function drawableHeight(drawable){ return drawable.naturalHeight || drawable.height; }
+
+  function draw(index, drawable){
+    if(!drawable || !canvas.width || !canvas.height) return;
+    var sourceWidth = drawableWidth(drawable);
+    var sourceHeight = drawableHeight(drawable);
+    if(!sourceWidth || !sourceHeight) return;
+
+    var scale = Math.max(canvas.width / sourceWidth, canvas.height / sourceHeight);
+    var width = sourceWidth * scale;
+    var height = sourceHeight * scale;
+    context.fillStyle = '#0A0A0A';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(drawable, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+    rendered = index;
+    canvas.dataset.frame = String(index + 1);
+  }
+
+  function nearestDecoded(){
+    if(decoded.has(desired)) return desired;
+    var best = -1;
+    var distance = Infinity;
+    decoded.forEach(function(drawable, index){
+      var delta = Math.abs(index - desired);
+      if(delta < distance){ distance = delta; best = index; }
+    });
+    return best;
+  }
+
+  function scheduleDraw(){
+    if(drawRaf) return;
+    drawRaf = requestAnimationFrame(function(){
+      drawRaf = 0;
+      var index = nearestDecoded();
+      if(index >= 0 && (index !== rendered || canvas.dataset.resized === 'true')){
+        canvas.dataset.resized = 'false';
+        draw(index, decoded.get(index));
+      }
+    });
+  }
+
+  function decodeAround(index){
+    queueDecode(index, true);
+    var offsets = direction >= 0 ? [1,2,3,-1,-2,4] : [-1,-2,-3,1,2,-4];
+    offsets.forEach(function(offset){
+      var neighbour = index + offset;
+      if(neighbour >= 0 && neighbour < frameCount) queueDecode(neighbour, false);
+    });
+  }
+
+  function requestFrame(index){
+    index = clamp(Math.round(index));
+    if(index !== desired) direction = index > desired ? 1 : -1;
+    desired = index;
+    if(!prefetchStarted) return;
+    decodeAround(index);
+    scheduleDraw();
+  }
+
+  function resize(){
+    var width = Math.max(1, stage.clientWidth);
+    var height = Math.max(1, stage.clientHeight);
+    var dpr = mobile ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
+    var nextWidth = Math.round(width * dpr);
+    var nextHeight = Math.round(height * dpr);
+    if(canvas.width !== nextWidth || canvas.height !== nextHeight){
+      canvas.width = nextWidth;
+      canvas.height = nextHeight;
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      canvas.dataset.resized = 'true';
+      scheduleDraw();
+    }
+  }
+
+  function preloadOrder(){
+    var order = [];
+    var seen = new Set();
+    function add(index){
+      index = clamp(index);
+      if(!seen.has(index)){ seen.add(index); order.push(index); }
+    }
+    for(var i = 0; i < Math.min(frameCount, mobile ? 16 : 24); i++) add(i);
+    add(frameCount - 1);
+    add(Math.round((frameCount - 1) * .5));
+    add(Math.round((frameCount - 1) * .25));
+    add(Math.round((frameCount - 1) * .75));
+    for(var j = 0; j < frameCount; j++) add(j);
+    return order;
+  }
+
+  function startPreload(){
+    if(prefetchStarted) return;
+    prefetchStarted = true;
+    section.classList.add('is-loading');
+
+    if(staticMode){
+      queueDecode(desired, true);
+      return;
+    }
+
+    var order = preloadOrder();
+    var cursor = 0;
+    var workers = mobile ? 4 : 6;
+    function worker(){
+      if(cursor >= order.length) return Promise.resolve();
+      var index = order[cursor++];
+      return fetchFrame(index).then(worker);
+    }
+    for(var i = 0; i < workers; i++) worker();
+    decodeAround(desired);
+  }
+
+  resize();
+  window.addEventListener('resize', function(){
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(resize);
+  });
+
+  if(staticMode){
+    section.classList.add('is-static');
+    loaderLabel.textContent = reduced ? 'Image fixe · mouvement réduit' : 'Image fixe · économie de données';
+    startPreload();
+    return;
+  }
+
+  if('IntersectionObserver' in window){
+    var warmup = new IntersectionObserver(function(entries){
+      if(entries.some(function(entry){ return entry.isIntersecting; })){
+        startPreload();
+        warmup.disconnect();
+      }
+    }, {rootMargin:Math.round(window.innerHeight * 1.75) + 'px 0px'});
+    warmup.observe(section);
+  } else {
+    startPreload();
+  }
+
+  var playhead = {frame:0};
+  var scrollDistance = function(){ return Math.round(window.innerHeight * (mobile ? 2.4 : 3.2)); };
+  function setImmersiveActive(active){
+    document.body.classList.toggle('immersive-active', active);
+    if(active) startPreload();
+  }
+  gsap.to(playhead, {
+    frame:frameCount - 1,
+    ease:'none',
+    snap:'frame',
+    onUpdate:function(){ requestFrame(playhead.frame); },
+    scrollTrigger:{
+      trigger:section,
+      start:'top top',
+      end:function(){ return '+=' + scrollDistance(); },
+      pin:true,
+      pinSpacing:true,
+      scrub:mobile ? .55 : .65,
+      anticipatePin:1,
+      invalidateOnRefresh:true,
+      onToggle:function(self){
+        if(self.isActive) startPreload();
+      }
+    }
+  });
+
+  /* Le CTA flottant s'efface dès que la scène entre dans le viewport,
+     y compris au pixel exact qui précède le début du pin. */
+  ScrollTrigger.create({
+    trigger:section,
+    start:'top bottom',
+    end:function(){ return '+=' + (window.innerHeight + scrollDistance()); },
+    invalidateOnRefresh:true,
+    onToggle:function(self){ setImmersiveActive(self.isActive); }
+  });
+
+  gsap.to([copy, hint], {
+    opacity:0,
+    y:-34,
+    ease:'none',
+    scrollTrigger:{
+      trigger:section,
+      start:'top top',
+      end:function(){ return '+=' + Math.round(window.innerHeight * .72); },
+      scrub:.45,
+      invalidateOnRefresh:true
+    }
+  });
+
+  if(transitionWash && exitScene && spinnerLogo && exitLabel){
+    var exitTimeline = gsap.timeline({
+      scrollTrigger:{
+        trigger:section,
+        start:'top top',
+        end:function(){ return '+=' + scrollDistance(); },
+        scrub:mobile ? .5 : .65,
+        invalidateOnRefresh:true
+      }
+    });
+    exitTimeline
+      .fromTo(transitionWash,
+        {opacity:0},
+        {opacity:1,duration:.31,ease:'power1.inOut'}, .69)
+      .fromTo(exitScene,
+        {opacity:0,y:mobile?62:86,scale:.78},
+        {opacity:1,y:0,scale:1,duration:.25,ease:'power2.out'}, .73)
+      .fromTo(spinnerLogo,
+        {rotationY:-900,rotationZ:-8,scale:.58},
+        {rotationY:0,rotationZ:0,scale:1,duration:.26,ease:'power2.out',force3D:true}, .72)
+      .fromTo(exitLabel,
+        {opacity:0,y:14,letterSpacing:'.38em'},
+        {opacity:1,y:0,letterSpacing:'.24em',duration:.2,ease:'power2.out'}, .8);
+  }
+})();
+
+/* ── Méthode mobile : rail vertical infini à focus central.
+     Le geste reste natif ; les commandes et le clavier utilisent le même
+     mouvement amorti. Les copies de boucle sont masquées aux technologies
+     d'assistance, qui ne parcourent que les cinq étapes originales. ── */
+(function(){
+  var section = document.getElementById('methode');
+  var reel = document.getElementById('methodReel');
+  if(!section || !reel) return;
+
+  var mobileQuery = window.matchMedia('(max-width:900px), (max-width:932px) and (max-height:560px) and (orientation:landscape)');
+
+  var originals = Array.prototype.slice.call(reel.querySelectorAll('.step'));
+  var count = originals.length;
+  if(!count) return;
+
+  var previous = section.querySelector('.method-reel-prev');
+  var next = section.querySelector('.method-reel-next');
+  var indexes = Array.prototype.slice.call(section.querySelectorAll('[data-method-index]'));
+  var status = section.querySelector('.method-reel-status');
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function prepareOriginal(card, index){
+    card.dataset.methodLogical = String(index);
+  }
+
+  function makeClone(card){
+    var clone = card.cloneNode(true);
+    clone.classList.remove('reveal', 'visible', 'is-active', 'is-expanded');
+    clone.removeAttribute('data-i');
+    clone.setAttribute('data-method-clone', '');
+    clone.setAttribute('aria-hidden', 'true');
+    clone.setAttribute('inert', '');
+    clone.querySelectorAll('[id]').forEach(function(node){ node.removeAttribute('id'); });
+    clone.querySelectorAll('[aria-controls]').forEach(function(node){ node.removeAttribute('aria-controls'); });
+    clone.querySelectorAll('button').forEach(function(button){ button.setAttribute('tabindex', '-1'); });
+    return clone;
+  }
+
+  originals.forEach(prepareOriginal);
+  var before = document.createDocumentFragment();
+  var after = document.createDocumentFragment();
+  originals.forEach(function(card){
+    before.appendChild(makeClone(card));
+    after.appendChild(makeClone(card));
+  });
+  reel.insertBefore(before, reel.firstChild);
+  reel.appendChild(after);
+
+  var cards = Array.prototype.slice.call(reel.querySelectorAll('.step'));
+  var cardCenters = [];
+  var setHeight = 0;
+  var currentPhysical = -1;
+  var currentLogical = -1;
+  var focusRaf = 0;
+  var resizeTimer = 0;
+  var idleTimer = 0;
+  var controlled = false;
+
+  section.classList.add('method-carousel-ready');
+
+  function center(card){ return card.offsetTop + card.offsetHeight / 2; }
+  function targetFor(card){ return center(card) - reel.clientHeight / 2; }
+
+  function closestPhysical(){
+    var midpoint = reel.scrollTop + reel.clientHeight / 2;
+    var best = 0;
+    var distance = Infinity;
+    for(var i = 0; i < cards.length; i++){
+      var delta = Math.abs(cardCenters[i] - midpoint);
+      if(delta < distance){ distance = delta; best = i; }
+    }
+    return best;
+  }
+
+  function measure(){
+    cardCenters = cards.map(center);
+    setHeight = cardCenters[count] - cardCenters[0];
+  }
+
+  function syncControls(card, active){
+    if(card.hasAttribute('data-method-clone')) return;
+    var expanded = card.classList.contains('is-expanded');
+    var more = card.querySelector('.method-more');
+    var back = card.querySelector('.method-back');
+    if(more) more.tabIndex = mobileQuery.matches && active && !expanded ? 0 : -1;
+    if(back) back.tabIndex = mobileQuery.matches && active && expanded ? 0 : -1;
+  }
+
+  function collapse(card){
+    if(!card || !card.classList.contains('is-expanded')) return;
+    card.classList.remove('is-expanded');
+    var more = card.querySelector('.method-more');
+    var front = card.querySelector('.step-front');
+    var detail = card.querySelector('.step-detail');
+    if(more) more.setAttribute('aria-expanded', 'false');
+    if(front) front.setAttribute('aria-hidden', 'false');
+    if(detail) detail.setAttribute('aria-hidden', 'true');
+    syncControls(card, card.classList.contains('is-active'));
+  }
+
+  function syncAccessibility(){
+    originals.forEach(function(card){
+      var front = card.querySelector('.step-front');
+      var detail = card.querySelector('.step-detail');
+      if(mobileQuery.matches){
+        if(front) front.setAttribute('aria-hidden', String(card.classList.contains('is-expanded')));
+        if(detail) detail.setAttribute('aria-hidden', String(!card.classList.contains('is-expanded')));
+      } else {
+        card.classList.remove('is-expanded', 'is-active');
+        card.removeAttribute('aria-current');
+        if(front) front.removeAttribute('aria-hidden');
+        if(detail) detail.removeAttribute('aria-hidden');
+        var more = card.querySelector('.method-more');
+        if(more) more.setAttribute('aria-expanded', 'false');
+      }
+      syncControls(card, false);
+    });
+  }
+
+  function updateIndicators(logical){
+    if(logical === currentLogical) return;
+    currentLogical = logical;
+    indexes.forEach(function(button, index){
+      var active = index === logical;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    originals.forEach(function(card, index){
+      if(index === logical) card.setAttribute('aria-current', 'step');
+      else card.removeAttribute('aria-current');
+    });
+    var title = originals[logical] && originals[logical].dataset.methodTitle;
+    if(status) status.textContent = 'Étape ' + (logical + 1) + ' sur ' + count + ' · ' + title;
+  }
+
+  function updateFocus(){
+    focusRaf = 0;
+    if(!mobileQuery.matches) return;
+    var midpoint = reel.scrollTop + reel.clientHeight / 2;
+    var stride = Math.max(1, cardCenters[count + 1] - cardCenters[count]);
+    var nearest = 0;
+    var nearestDistance = Infinity;
+
+    cards.forEach(function(card, index){
+      var distance = Math.abs(cardCenters[index] - midpoint);
+      var ratio = Math.min(1, distance / stride);
+      var focus = 1 - ratio;
+      card.style.setProperty('--method-scale', (.86 + focus * .14).toFixed(3));
+      card.style.setProperty('--method-opacity', (.32 + focus * .68).toFixed(3));
+      card.style.setProperty('--method-blur', (ratio * 1.35).toFixed(2) + 'px');
+      card.style.setProperty('--method-saturation', (.72 + focus * .28).toFixed(3));
+      if(distance < nearestDistance){ nearestDistance = distance; nearest = index; }
+    });
+
+    if(nearest !== currentPhysical){
+      currentPhysical = nearest;
+      cards.forEach(function(card, index){
+        var active = index === nearest;
+        card.classList.toggle('is-active', active);
+        if(!active) collapse(card);
+        syncControls(card, active);
+      });
+      updateIndicators(parseInt(cards[nearest].dataset.methodLogical, 10));
+    }
+  }
+
+  function scheduleFocus(){
+    if(!focusRaf) focusRaf = requestAnimationFrame(updateFocus);
+  }
+
+  function loopFix(){
+    if(!mobileQuery.matches || controlled || !setHeight) return false;
+    var index = closestPhysical();
+    var shift = 0;
+    if(index < count) shift = setHeight;
+    else if(index >= count * 2) shift = -setHeight;
+    if(!shift) return false;
+
+    reel.classList.add('is-jumping');
+    reel.scrollTop += shift;
+    requestAnimationFrame(function(){ reel.classList.remove('is-jumping'); scheduleFocus(); });
+    return true;
+  }
+
+  function animateToPhysical(index){
+    if(!mobileQuery.matches) return;
+    index = Math.max(0, Math.min(cards.length - 1, index));
+    gsap.killTweensOf(reel);
+    controlled = true;
+    reel.classList.add('is-controlled');
+    if(reduced){
+      reel.scrollTop = targetFor(cards[index]);
+      controlled = false;
+      reel.classList.remove('is-controlled');
+      loopFix();
+      scheduleFocus();
+      return;
+    }
+    gsap.to(reel, {
+      scrollTop:targetFor(cards[index]),
+      duration:.68,
+      ease:'power3.out',
+      overwrite:true,
+      onUpdate:scheduleFocus,
+      onComplete:function(){
+        controlled = false;
+        reel.classList.remove('is-controlled');
+        loopFix();
+        scheduleFocus();
+      }
+    });
+  }
+
+  function goBy(delta){
+    if(!mobileQuery.matches || !setHeight) return;
+    loopFix();
+    var current = closestPhysical();
+    animateToPhysical(current + delta);
+  }
+
+  function goToLogical(logical){
+    if(!mobileQuery.matches) return;
+    var forward = (logical - currentLogical + count) % count;
+    var delta = forward > count / 2 ? forward - count : forward;
+    if(delta) goBy(delta);
+  }
+
+  reel.addEventListener('scroll', function(){
+    scheduleFocus();
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){
+      if(!controlled){ loopFix(); scheduleFocus(); }
+    }, 120);
+  }, {passive:true});
+
+  reel.addEventListener('pointerdown', function(){
+    if(!mobileQuery.matches) return;
+    gsap.killTweensOf(reel);
+    controlled = false;
+    reel.classList.remove('is-controlled');
+  }, {passive:true});
+
+  reel.addEventListener('keydown', function(event){
+    if(!mobileQuery.matches) return;
+    if(event.key === 'ArrowUp'){
+      event.preventDefault();
+      goBy(-1);
+    } else if(event.key === 'ArrowDown'){
+      event.preventDefault();
+      goBy(1);
+    } else if(event.key === 'Home'){
+      event.preventDefault();
+      goToLogical(0);
+    } else if(event.key === 'End'){
+      event.preventDefault();
+      goToLogical(count - 1);
+    }
+  });
+
+  reel.addEventListener('click', function(event){
+    if(!mobileQuery.matches) return;
+    var more = event.target.closest('.method-more');
+    var back = event.target.closest('.method-back');
+    var card = event.target.closest('.step');
+    if(!card || card.hasAttribute('data-method-clone') || !card.classList.contains('is-active')) return;
+
+    if(more){
+      card.classList.add('is-expanded');
+      more.setAttribute('aria-expanded', 'true');
+      card.querySelector('.step-front').setAttribute('aria-hidden', 'true');
+      card.querySelector('.step-detail').setAttribute('aria-hidden', 'false');
+      var backButton = card.querySelector('.method-back');
+      syncControls(card, true);
+      if(backButton) requestAnimationFrame(function(){ backButton.focus({preventScroll:true}); });
+    } else if(back){
+      collapse(card);
+      var moreButton = card.querySelector('.method-more');
+      if(moreButton) requestAnimationFrame(function(){ moreButton.focus({preventScroll:true}); });
+    }
+  });
+
+  if(previous) previous.addEventListener('click', function(){ goBy(-1); });
+  if(next) next.addEventListener('click', function(){ goBy(1); });
+  indexes.forEach(function(button){
+    button.addEventListener('click', function(){ goToLogical(parseInt(button.dataset.methodIndex, 10)); });
+  });
+
+  var visibility = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      document.body.classList.toggle('method-carousel-active', mobileQuery.matches && entry.isIntersecting);
+    });
+  }, {rootMargin:'-12% 0px -12% 0px', threshold:0});
+  visibility.observe(section);
+
+  function initialise(){
+    syncAccessibility();
+    if(!mobileQuery.matches){
+      gsap.killTweensOf(reel);
+      controlled = false;
+      reel.classList.remove('is-controlled', 'is-jumping');
+      currentPhysical = -1;
+      currentLogical = -1;
+      reel.scrollTop = 0;
+      document.body.classList.remove('method-carousel-active');
+      return;
+    }
+    var sectionRect = section.getBoundingClientRect();
+    document.body.classList.toggle('method-carousel-active', sectionRect.bottom > window.innerHeight * .12 && sectionRect.top < window.innerHeight * .88);
+    measure();
+    reel.classList.add('is-jumping');
+    reel.scrollTop = targetFor(cards[count]);
+    requestAnimationFrame(function(){
+      reel.classList.remove('is-jumping');
+      updateFocus();
+    });
+  }
+
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){
+      if(!mobileQuery.matches){
+        initialise();
+        return;
+      }
+      measure();
+      reel.classList.add('is-jumping');
+      reel.scrollTop = targetFor(cards[count + Math.max(0, currentLogical)]);
+      requestAnimationFrame(function(){
+        reel.classList.remove('is-jumping');
+        scheduleFocus();
+      });
+    }, 160);
+  });
+
+  if(typeof mobileQuery.addEventListener === 'function') mobileQuery.addEventListener('change', initialise);
+
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ requestAnimationFrame(initialise); });
+  else requestAnimationFrame(initialise);
 })();
 
 /* ── Reveal au scroll (cascade) ── */
@@ -771,10 +1519,17 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   var burger = document.getElementById('burger');
   var menu = document.getElementById('menu');
   if(!burger) return;
-  function close(){document.body.classList.remove('menu-open');burger.setAttribute('aria-expanded','false')}
+  function close(){
+    document.body.classList.remove('menu-open');
+    burger.setAttribute('aria-expanded','false');
+    if(window.__awoneLenis) window.__awoneLenis.start();
+  }
   burger.addEventListener('click', function(){
     var open = document.body.classList.toggle('menu-open');
     burger.setAttribute('aria-expanded', open);
+    if(window.__awoneLenis){
+      if(open) window.__awoneLenis.stop(); else window.__awoneLenis.start();
+    }
   });
   menu.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', close); });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
