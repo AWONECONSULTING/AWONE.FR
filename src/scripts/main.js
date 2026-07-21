@@ -5,6 +5,7 @@ import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
 
 gsap.registerPlugin(ScrollTrigger);
+ScrollTrigger.config({ignoreMobileResize:true});
 
 /* ── Défilement principal : Lenis alimente le même ticker que GSAP.
      Les deux carrousels horizontaux restent gérés nativement. ── */
@@ -12,10 +13,18 @@ gsap.registerPlugin(ScrollTrigger);
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(reduced) return;
 
+  var coarsePointer = window.matchMedia('(pointer:coarse)').matches;
+  var isIOS = /iP(ad|hone|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var iosVersion = navigator.userAgent.match(/OS (\d+)_/) || navigator.userAgent.match(/Version\/(\d+)/);
+  var legacyIOS = Boolean(isIOS && iosVersion && parseInt(iosVersion[1], 10) < 16);
+
   var lenis = new Lenis({
     lerp:.09,
     smoothWheel:true,
-    syncTouch:false,
+    syncTouch:coarsePointer && !legacyIOS,
+    syncTouchLerp:.085,
+    touchInertiaExponent:1.6,
+    touchMultiplier:1,
     wheelMultiplier:.95,
     anchors:{offset:-72},
     stopInertiaOnNavigate:true,
@@ -35,45 +44,99 @@ gsap.registerPlugin(ScrollTrigger);
   window.__awoneLenis = lenis;
 })();
 
+/* Le CTA flottant reste hors champ pendant tout le récit du hero,
+   y compris lorsque les animations sont désactivées. */
+(function(){
+  var hero = document.querySelector('.hero-transition');
+  if(!hero) return;
+  function setActive(active){ document.body.classList.toggle('hero-cinematic-active', active); }
+  function sync(){
+    var rect = hero.getBoundingClientRect();
+    setActive(rect.bottom > 0 && rect.top < window.innerHeight);
+  }
+  sync();
+  if('IntersectionObserver' in window){
+    new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){ setActive(entry.isIntersecting); });
+    }, {threshold:0}).observe(hero);
+  } else {
+    window.addEventListener('scroll', sync, {passive:true});
+    window.addEventListener('resize', sync);
+  }
+})();
+
 (function(){
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(reduced){ document.documentElement.classList.add('no-gsap'); return; }
     var mm = gsap.matchMedia();
-    mm.add({ desktop:'(min-width:761px)', mobile:'(max-width:760px)' }, function(ctx){
+    mm.add({
+      desktop:'(min-width:901px)',
+      mobile:'(max-width:900px), (max-width:932px) and (max-height:560px) and (orientation:landscape)'
+    }, function(ctx){
       var mob = ctx.conditions.mobile;
+      var hero = document.querySelector('.hero-transition');
+      var card = document.querySelector('.morph-card');
+      var cardInner = document.querySelector('.mc-inner');
+      if(!hero || !card || !cardInner) return;
+
       var tl = gsap.timeline({
         scrollTrigger:{
-          trigger:'.hero-transition',
+          trigger:hero,
           start:'top top',
           end:'bottom bottom',
-          scrub:true,
+          scrub:mob ? .62 : .42,
           invalidateOnRefresh:true
         }
       });
-      /* 1. la typographie recule et s'efface */
-      tl.to('.ht-inner', {scale:.86, y:mob?-80:-140, opacity:.06, ease:'none'}, 0)
-        .to('.ht-hint',  {opacity:0, ease:'none'}, 0)
-      /* 2→4. la carte remonte du bas, se redresse et occupe l'écran */
-        .fromTo('.morph-card',
-          {y:function(){ return window.innerHeight * (mob ? .62 : .72); },
-           rotateX:16, rotateY:-20, skewX:-6,
-           scale:function(){
-             var w0 = mob ? Math.min(340, window.innerWidth * .8)
-                          : Math.min(430, window.innerWidth * .34);
-             return w0 / window.innerWidth;
-           },
-           borderRadius:64},
-          {y:0, rotateX:0, rotateY:0, skewX:0,
-           scale:1, /* échelle native : rendu final parfaitement net */
-           borderRadius:0, ease:'none', immediateRender:true}, 0)
-      /* l'intérieur contre-scale : la composition reste lisible pendant la déformation */
-        .fromTo('.mc-inner', {scale:2.3}, {scale:1, ease:'none'}, 0) /* lisible au repos, net en plein écran */
-      /* 3. l'univers bascule vers le noir AWONE, en continuité avec la suite */
-        .to('.ht-dark', {opacity:1, ease:'none'}, .38)
-      /* 5. la signature de la transition se révèle */
-        .to('.mc-cap', {opacity:1, ease:'none'}, .74)
-        .to('.mc-logo', {filter:'drop-shadow(0 6px 30px rgba(199,177,255,.6))', ease:'none'}, .74);
-      return function(){ tl.scrollTrigger && tl.scrollTrigger.kill(); tl.kill(); };
+
+      var cardFrom = {
+        y:0,
+        yPercent:mob ? 80 : 72,
+        rotateX:mob ? 12 : 16,
+        rotateY:mob ? -14 : -20,
+        rotationZ:mob ? -3 : 0,
+        skewX:mob ? -2 : -6,
+        scale:function(){
+          var w0 = mob ? Math.min(330, window.innerWidth * .82)
+                       : Math.min(430, window.innerWidth * .34);
+          return w0 / window.innerWidth;
+        },
+        force3D:true,
+        immediateRender:true
+      };
+      var cardTo = {
+        y:0,yPercent:0,rotateX:0,rotateY:0,rotationZ:0,skewX:0,scale:1,
+        duration:.72,ease:'none',force3D:true
+      };
+      if(!mob){
+        cardFrom.borderRadius = 64;
+        cardTo.borderRadius = 0;
+      }
+
+      /* Caméra : le texte s'éloigne pendant que la surface AWONE remonte,
+         se redresse et absorbe progressivement tout le viewport. */
+      tl.to('.ht-inner', {scale:.88,yPercent:mob?-9:-14,opacity:.04,duration:.3,ease:'none',force3D:true}, 0)
+        .to('.ht-hint', {opacity:0,duration:.16,ease:'none'}, 0)
+        .to('.ht-bg', {scale:1.045,duration:.72,ease:'none',force3D:true}, 0)
+        .fromTo(card, cardFrom, cardTo, .04)
+        .fromTo(cardInner,
+          {scale:mob?1.32:2.3,yPercent:mob?12:0,force3D:true},
+          {scale:1,yPercent:0,duration:.72,ease:'none',force3D:true}, .04)
+        .to('.ht-dark', {opacity:1,duration:.4,ease:'none'}, .34)
+        .fromTo('.mc-cap',
+          {opacity:0,y:mob?14:20},
+          {opacity:1,y:0,duration:.2,ease:'none',force3D:true}, .76);
+
+      if(mob){
+        tl.to('.mc-logo', {opacity:1,scale:1.018,duration:.18,ease:'none',force3D:true}, .76);
+      } else {
+        tl.to('.mc-logo', {filter:'drop-shadow(0 6px 30px rgba(199,177,255,.6))',duration:.18,ease:'none'}, .76);
+      }
+
+      return function(){
+        tl.scrollTrigger && tl.scrollTrigger.kill();
+        tl.kill();
+      };
     });
 
     /* ── Situations : apparitions douces en cascade (réf. UpSunday) ── */

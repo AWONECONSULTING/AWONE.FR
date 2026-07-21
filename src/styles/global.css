@@ -572,12 +572,13 @@ footer .copy{font-size:.72rem;color:rgba(252,252,252,.62)}
 /* ══════════════ HERO ÉDITORIAL + MORPH 3D (logique UpSunday) ═════════ */
 .hero-transition{height:320vh;position:relative}
 .hero-stage{
-  position:sticky;top:0;height:100vh;overflow:hidden;
+  position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
 }
 /* fond clair du nuancier : blanc → bleu pâle → crème */
 .ht-bg{
   position:absolute;inset:0;z-index:0;
+  transform-origin:50% 50%;will-change:transform;
   background:
     radial-gradient(90% 70% at 85% 0%, rgba(201,228,255,.75), transparent 60%),
     radial-gradient(80% 60% at 8% 100%, rgba(253,234,210,.8), transparent 62%),
@@ -654,11 +655,12 @@ footer .copy{font-size:.72rem;color:rgba(252,252,252,.62)}
   pointer-events:none;
 }
 .morph-card{
-  margin:0;width:100vw;height:100vh;
+  margin:0;width:100vw;height:100vh;height:100svh;
   /* taille native = plein écran : la fin de la métamorphose est
      rastérisée à l'échelle 1 → rendu parfaitement net, zéro pixel */
   transform:translateY(72vh) rotateX(16deg) rotateY(-20deg) skewX(-6deg) scale(.3);
   transform-style:preserve-3d;will-change:transform,border-radius;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;
   border-radius:64px;overflow:hidden;
   background:
     radial-gradient(80% 90% at 80% 0%, rgba(199,177,255,.2), transparent 60%),
@@ -698,11 +700,26 @@ html.no-gsap .morph-pos{position:relative;left:auto;top:auto;transform:none;marg
 html.no-gsap .morph-card{width:min(420px,84vw);height:auto;aspect-ratio:16/10;transform:none;border-radius:26px}
 html.no-gsap .mc-inner{transform:scale(.42) !important}
 html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
-@media (max-width:760px){
-  .hero-transition{height:260vh}
+@media (max-width:900px), (max-width:932px) and (max-height:560px) and (orientation:landscape){
+  .hero-transition{height:285vh;height:285svh}
   .ht-arrow{right:-.6em;bottom:-.7em}
-  .morph-card{border-radius:44px}
+  .morph-card{
+    border-radius:36px;transform-style:flat;contain:layout paint style;
+    box-shadow:0 24px 58px rgba(10,10,10,.34),0 0 32px rgba(199,177,255,.1);
+  }
+  .mc-logo{filter:drop-shadow(0 5px 18px rgba(199,177,255,.28));will-change:transform,opacity}
   .ht-title{font-size:clamp(2.2rem,10.5vw,3.4rem)}
+}
+@media (max-width:932px) and (max-height:560px) and (orientation:landscape){
+  .ht-inner{width:min(100%,850px);padding:0 54px}
+  .ht-kicker{font-size:.58rem;letter-spacing:.15em}
+  .ht-title{margin-top:.55rem;font-size:clamp(2rem,6vw,3rem);line-height:.94}
+  .ht-sub{max-width:610px;margin-top:.7rem;font-size:.76rem;line-height:1.4}
+  .ht-cta-zone{margin-top:.7rem}
+  .ht-cta-zone .cta{padding:.68rem 1.45rem;font-size:.8rem}
+  .ht-services{margin-top:.7rem;font-size:.54rem;letter-spacing:.12em}
+  .ht-hint{display:none}
+  .morph-card{border-radius:28px}
 }
 
 /* ══════════════ IMMERSIVE — séquence 3D pré-rendue sur canvas ════════ */
@@ -1327,6 +1344,7 @@ footer .ig-link{display:inline-flex;align-items:center;gap:.45rem}
 }
 .sticky-cta.show{transform:none;opacity:1}
 .immersive-active .sticky-cta.show,
+.hero-cinematic-active .sticky-cta.show,
 .method-carousel-active .sticky-cta.show{transform:translateY(24px);opacity:0;pointer-events:none}
 .sticky-cta .cta{
   padding:.85rem 1.5rem;font-size:.9rem;
