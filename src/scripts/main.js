@@ -164,8 +164,9 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   poles.forEach(function(p){ io.observe(p); });
 })();
 
-/* ── Situations : carrousel infini façon Apple TV — focus central,
-     inertie douce et retour invisible au début/à la fin. ── */
+/* ── Situations : carrousel infini façon Apple TV — le trackpad et le
+     tactile gardent leur inertie native ; la souris utilise un ressort
+     amorti, indépendant du taux de rafraîchissement de l'écran. ── */
 (function(){
   var c = document.getElementById('situationsCarousel');
   if(!c) return;
@@ -178,12 +179,12 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   function makeClone(card){
     var clone = card.cloneNode(true);
 
-    /* GSAP pose son etat d'entree en style inline avant cette initialisation.
-       Une copie doit repartir de la CSS, sinon elle reste invisible. */
+    /* GSAP peut poser un etat d'entree inline avant l'initialisation. */
     clone.removeAttribute('style');
     clone.classList.remove('is-active');
     clone.removeAttribute('aria-current');
     clone.setAttribute('aria-hidden', 'true');
+    clone.setAttribute('inert', '');
     clone.setAttribute('data-carousel-clone', '');
     return clone;
   }
@@ -195,98 +196,176 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   c.appendChild(after);
 
   var cards = Array.prototype.slice.call(c.querySelectorAll('.situation-card'));
-  var setW = 0, current = -1, idle, raf;
-  var down = false, flinging = false;
-  var sx = 0, ss = 0, moved = false, vel = 0, lastX = 0, lastT = 0, flingRaf;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var setW = 0, current = -1, focusRaf = 0, idle = 0, resizeIdle = 0;
+  var motionRaf = 0, dragRaf = 0, settling = false;
+  var down = false, pointerId = null, moved = false;
+  var startX = 0, startScroll = 0, dragTarget = 0;
+  var lastX = 0, lastT = 0, pointerVelocity = 0;
 
   function center(el){ return el.offsetLeft + el.offsetWidth / 2; }
   function targetFor(i){ return center(cards[i]) - c.clientWidth / 2; }
-  function measure(){
-    setW = center(cards[N]) - center(cards[0]);
-  }
-  function jumpToMiddle(){
-    var prev = c.style.scrollBehavior;
-    c.style.scrollBehavior = 'auto';
-    c.scrollLeft = targetFor(N);
-    c.style.scrollBehavior = prev;
-    current = -1;
-    focusClosest();
-  }
-  function focusClosest(){
-    var mid = c.scrollLeft + c.clientWidth / 2;
+  function measure(){ setW = center(cards[N]) - center(cards[0]); }
+
+  function closestIndex(scrollPosition){
+    var mid = scrollPosition + c.clientWidth / 2;
     var best = 0, dist = Infinity;
     for(var i = 0; i < cards.length; i++){
       var d = Math.abs(center(cards[i]) - mid);
       if(d < dist){ dist = d; best = i; }
     }
-    if(best !== current){
-      cards.forEach(function(card, i){
-        var on = i === best;
-        card.classList.toggle('is-active', on);
-        if(!card.hasAttribute('aria-hidden')) card.setAttribute('aria-current', on ? 'true' : 'false');
-      });
-      current = best;
-    }
     return best;
   }
-  function loopFix(){
-    var b = focusClosest();
-    if(!setW) return b;
-    if(b < N || b >= 2 * N){
-      var prev = c.style.scrollBehavior;
-      c.style.scrollBehavior = 'auto';
-      c.scrollLeft += b < N ? setW : -setW;
-      c.style.scrollBehavior = prev;
-      current = -1;
-      b = focusClosest();
+
+  function focusClosest(){
+    var best = closestIndex(c.scrollLeft);
+    if(best === current) return best;
+
+    if(current >= 0){
+      cards[current].classList.remove('is-active');
+      if(!cards[current].hasAttribute('aria-hidden')) cards[current].setAttribute('aria-current', 'false');
     }
-    return b;
+    cards[best].classList.add('is-active');
+    if(!cards[best].hasAttribute('aria-hidden')) cards[best].setAttribute('aria-current', 'true');
+    current = best;
+    return best;
   }
-  function goToIndex(i){
-    c.scrollTo({left: targetFor(i), behavior:'smooth'});
-  }
-  function step(dir){
-    var b = loopFix();
-    goToIndex(b + dir);
-  }
-  function settle(){
-    if(down || flinging) return;
-    var b = loopFix();
-    var target = targetFor(b);
-    if(Math.abs(c.scrollLeft - target) > 2){
-      c.scrollTo({left: target, behavior:'smooth'});
+
+  /* Les copies exterieures donnent une grande zone d'elan. Le saut vers la
+     copie centrale n'a lieu qu'une fois le geste fini (ou pres d'un bord),
+     afin de ne jamais casser l'inertie native. */
+  function loopFix(force){
+    var best = focusClosest();
+    if(!setW) return 0;
+
+    var shift = 0;
+    if((force && best < N) || (!force && best <= 1)) shift = setW;
+    if((force && best >= 2 * N) || (!force && best >= cards.length - 2)) shift = -setW;
+    if(!shift) return 0;
+
+    var controlled = c.classList.contains('is-controlled');
+    if(!controlled) c.classList.add('is-jumping');
+    c.scrollLeft += shift;
+
+    /* Correctif essentiel : le repere du drag suit lui aussi le saut de
+       boucle. Sans cela, l'evenement suivant ramenait le rail en arriere. */
+    if(down){
+      startScroll += shift;
+      dragTarget += shift;
     }
+    focusClosest();
+    if(!controlled){
+      requestAnimationFrame(function(){ c.classList.remove('is-jumping'); });
+    }
+    return shift;
   }
-  function stopFling(){ flinging = false; cancelAnimationFrame(flingRaf); }
-  function fling(){
-    flinging = true;
-    (function roll(){
-      if(!flinging) return;
-      c.scrollLeft -= vel * 16;
-      vel *= 0.935;
-      loopFix();
-      if(Math.abs(vel) > 0.04){ flingRaf = requestAnimationFrame(roll); }
-      else { flinging = false; settle(); }
-    })();
+
+  function stopMotion(){
+    cancelAnimationFrame(motionRaf);
+    motionRaf = 0;
+    settling = false;
+    c.classList.remove('is-controlled');
+  }
+
+  /* Ressort critique : même sensation sur un écran 60, 90 ou 120 Hz. */
+  function springTo(target, initialVelocity){
+    stopMotion();
+    clearTimeout(idle);
+
+    if(reduced){
+      c.classList.add('is-jumping');
+      c.scrollLeft = target;
+      loopFix(true);
+      focusClosest();
+      requestAnimationFrame(function(){ c.classList.remove('is-jumping', 'is-scrolling'); });
+      return;
+    }
+
+    var position = c.scrollLeft;
+    var velocity = Math.max(-2400, Math.min(2400, initialVelocity || 0));
+    var previous = performance.now();
+    settling = true;
+    c.classList.add('is-controlled', 'is-scrolling');
+
+    function tick(now){
+      if(!settling) return;
+      var elapsed = Math.min((now - previous) / 1000, .034);
+      previous = now;
+
+      /* Sous-pas courts : le ressort reste stable même après une image lente. */
+      var steps = Math.max(1, Math.ceil(elapsed / .008));
+      var dt = elapsed / steps;
+      for(var i = 0; i < steps; i++){
+        var acceleration = (target - position) * 185 - velocity * 27;
+        velocity += acceleration * dt;
+        position += velocity * dt;
+      }
+
+      c.scrollLeft = position;
+      var shift = loopFix(false);
+      if(shift){ position += shift; target += shift; }
+      focusClosest();
+
+      if(Math.abs(target - position) < .45 && Math.abs(velocity) < 5){
+        c.scrollLeft = target;
+        settling = false;
+        motionRaf = 0;
+        loopFix(true);
+        focusClosest();
+        c.classList.remove('is-controlled', 'is-scrolling');
+        return;
+      }
+      motionRaf = requestAnimationFrame(tick);
+    }
+    motionRaf = requestAnimationFrame(tick);
+  }
+
+  function settle(initialVelocity, projectedPosition){
+    if(down || settling) return;
+    var position = typeof projectedPosition === 'number' ? projectedPosition : c.scrollLeft;
+    var best = closestIndex(position);
+    var target = targetFor(best);
+    if(Math.abs(c.scrollLeft - target) < .75 && Math.abs(initialVelocity || 0) < 5){
+      c.scrollLeft = target;
+      loopFix(true);
+      focusClosest();
+      c.classList.remove('is-scrolling');
+      return;
+    }
+    springTo(target, initialVelocity || 0);
+  }
+
+  function step(direction){
+    stopMotion();
+    loopFix(true);
+    var best = focusClosest();
+    springTo(targetFor(best + direction), 0);
+  }
+
+  function paintDrag(){
+    dragRaf = 0;
+    if(!down) return;
+    c.scrollLeft = dragTarget;
+    loopFix(false);
+    focusClosest();
   }
 
   c.addEventListener('scroll', function(){
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(focusClosest);
+    c.classList.add('is-scrolling');
+    cancelAnimationFrame(focusRaf);
+    focusRaf = requestAnimationFrame(focusClosest);
+    if(down || settling || c.classList.contains('is-jumping')) return;
     clearTimeout(idle);
-    idle = setTimeout(function(){ loopFix(); settle(); }, 120);
+    idle = setTimeout(function(){ settle(0); }, 190);
   }, {passive:true});
 
+  /* Ne pas intercepter la molette : macOS, Windows et les trackpads gardent
+     ainsi leur courbe d'acceleration et leur inertie natives. */
   c.addEventListener('wheel', function(e){
-    var delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
-    if(!delta) return;
-    e.preventDefault();
-    stopFling();
-    c.scrollLeft += delta;
-    loopFix();
+    if(Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    stopMotion();
     clearTimeout(idle);
-    idle = setTimeout(settle, 120);
-  }, {passive:false});
+  }, {passive:true});
 
   c.addEventListener('keydown', function(e){
     if(e.key === 'ArrowRight'){ e.preventDefault(); step(1); }
@@ -294,40 +373,84 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
   });
 
   c.addEventListener('pointerdown', function(e){
-    stopFling();
-    down = true; moved = false;
-    sx = e.clientX; ss = c.scrollLeft;
-    lastX = e.clientX; lastT = performance.now(); vel = 0;
-    c.classList.add('dragging');
-    c.setPointerCapture && c.setPointerCapture(e.pointerId);
+    stopMotion();
+    clearTimeout(idle);
+
+    /* Au doigt et au stylet, le navigateur fournit la meilleure inertie. */
+    if(e.pointerType !== 'mouse' || e.button !== 0) return;
+
+    down = true;
+    pointerId = e.pointerId;
+    moved = false;
+    startX = lastX = e.clientX;
+    startScroll = dragTarget = c.scrollLeft;
+    lastT = performance.now();
+    pointerVelocity = 0;
+    c.classList.add('dragging', 'is-controlled');
+    if(c.setPointerCapture) c.setPointerCapture(pointerId);
   });
+
   c.addEventListener('pointermove', function(e){
-    if(!down) return;
-    if(Math.abs(e.clientX - sx) > 4) moved = true;
-    c.scrollLeft = ss - (e.clientX - sx);
-    var now = performance.now(), dt = now - lastT;
-    if(dt > 0){ vel = (e.clientX - lastX) / dt; lastX = e.clientX; lastT = now; }
-    loopFix();
+    if(!down || e.pointerId !== pointerId) return;
+    var distance = e.clientX - startX;
+    if(Math.abs(distance) > 4) moved = true;
+    dragTarget = startScroll - distance;
+
+    var now = performance.now();
+    var dt = now - lastT;
+    if(dt > 0 && dt < 80){
+      var instantVelocity = (e.clientX - lastX) / dt;
+      pointerVelocity = pointerVelocity * .65 + instantVelocity * .35;
+    }
+    lastX = e.clientX;
+    lastT = now;
+
+    if(!dragRaf) dragRaf = requestAnimationFrame(paintDrag);
+    if(moved) e.preventDefault();
   });
-  function endDrag(e){
-    if(!down) return;
-    down = false; c.classList.remove('dragging');
-    c.releasePointerCapture && e && c.releasePointerCapture(e.pointerId);
-    if(!moved) return;
-    if(Math.abs(vel) > 0.25){ fling(); }
-    else { settle(); }
+
+  function endDrag(e, cancelled){
+    if(!down || (e && e.pointerId !== pointerId)) return;
+    if(dragRaf){ cancelAnimationFrame(dragRaf); paintDrag(); }
+
+    down = false;
+    c.classList.remove('dragging', 'is-controlled');
+    if(c.releasePointerCapture && e && c.hasPointerCapture && c.hasPointerCapture(pointerId)){
+      c.releasePointerCapture(pointerId);
+    }
+    pointerId = null;
+
+    if(!moved){
+      c.classList.remove('is-scrolling');
+      return;
+    }
+
+    if(cancelled || performance.now() - lastT > 90) pointerVelocity = 0;
+    var scrollVelocity = Math.max(-2400, Math.min(2400, -pointerVelocity * 1000));
+    /* Projection courte : un geste franc avance naturellement d'une ou deux
+       cartes, puis le ressort attire la carte la plus proche au centre. */
+    settle(scrollVelocity, c.scrollLeft + scrollVelocity * .18);
   }
-  c.addEventListener('pointerup', endDrag);
-  c.addEventListener('pointercancel', endDrag);
+  c.addEventListener('pointerup', function(e){ endDrag(e, false); });
+  c.addEventListener('pointercancel', function(e){ endDrag(e, true); });
 
-  window.addEventListener('resize', function(){
+  function jumpToLogical(logicalIndex){
+    stopMotion();
     measure();
-    loopFix();
-    settle();
-  });
+    c.classList.add('is-jumping');
+    c.scrollLeft = targetFor(N + logicalIndex);
+    focusClosest();
+    requestAnimationFrame(function(){ c.classList.remove('is-jumping', 'is-scrolling'); });
+  }
 
-  measure();
-  requestAnimationFrame(jumpToMiddle);
+  requestAnimationFrame(function(){ jumpToLogical(0); });
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeIdle);
+    resizeIdle = setTimeout(function(){
+      var logical = current < 0 ? 0 : ((current % N) + N) % N;
+      jumpToLogical(logical);
+    }, 160);
+  });
 })();
 
 /* ── Lueur qui suit la souris sur la section situations (réf. UpSunday) ── */

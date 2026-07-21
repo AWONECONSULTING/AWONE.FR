@@ -653,18 +653,23 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
 .situations-carousel-wrapper{position:relative}
 .situations-carousel{
   display:flex;gap:22px;overflow-x:auto;
-  /* roue libre : l'inertie est naturelle, l'alignement se fait en douceur en JS */
+  /* inertie native + aimantation legere, completee par le ressort souris en JS */
   scroll-behavior:auto;
+  scroll-snap-type:x proximity;
+  overscroll-behavior-x:contain;
+  overscroll-behavior-inline:contain;
   /* marges internes généreuses : cartes, ombres et hover ne sont JAMAIS coupés */
   padding:18px 0 46px;
   scrollbar-width:none;-ms-overflow-style:none;cursor:grab;
   -webkit-overflow-scrolling:touch;
   user-select:none;-webkit-user-select:none;
-  touch-action:pan-y;
+  touch-action:pan-x pan-y pinch-zoom;
   /* fondu du bord droit : on comprend immédiatement que ça défile */
   mask-image:linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
   -webkit-mask-image:linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
 }
+.situations-carousel.is-controlled,
+.situations-carousel.is-jumping{scroll-snap-type:none}
 .situations-carousel::-webkit-scrollbar{display:none}
 /* lueur douce qui suit le curseur — comme un doigt sur un écran */
 .s-glow{
@@ -691,18 +696,25 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
   flex:0 0 calc((100% - 72.6px) / 3.3);min-width:calc((100% - 72.6px) / 3.3);
   overflow:hidden;border-radius:24px;background:#070707;
   box-shadow:0 24px 70px rgba(20,8,0,.14);
-  transform:translateZ(0) scale(.965);
+  scroll-snap-align:center;scroll-snap-stop:normal;
+  transform:scale(.965);
   transform-origin:50% 58%;
   user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
-  will-change:transform;
-  transition:transform .72s cubic-bezier(.16,1,.3,1),box-shadow .72s cubic-bezier(.16,1,.3,1),filter .72s ease,opacity .72s ease;
+  transition:transform .58s cubic-bezier(.16,1,.3,1);
 }
 .situation-card.is-active,
-.situation-card:hover,
 .situation-card:focus-within{
   z-index:2;
   transform:translateY(-8px) scale(1.035);
   box-shadow:0 36px 95px rgba(20,8,0,.26), 0 0 42px rgba(255,111,60,.14);
+  will-change:transform;
+}
+@media (hover:hover){
+  .situations-carousel:not(.is-scrolling) .situation-card:hover{
+    z-index:2;
+    transform:translateY(-8px) scale(1.035);
+    box-shadow:0 36px 95px rgba(20,8,0,.26), 0 0 42px rgba(255,111,60,.14);
+  }
 }
 .situation-image{position:relative;height:clamp(160px,14vw,215px);overflow:hidden;background:#0A0603}
 .situation-image::after{
@@ -713,12 +725,14 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
 }
 .situation-image svg{
   width:100%;height:100%;display:block;
-  transform:scale(1.04);will-change:transform;
-  transition:transform .9s cubic-bezier(.22,1,.36,1),filter .9s ease;
+  transform:scale(1.04);
+  transition:transform .72s cubic-bezier(.22,1,.36,1);
 }
 .situation-card.is-active .situation-image svg,
-.situation-card:hover .situation-image svg,
-.situation-card:focus-within .situation-image svg{transform:scale(1.12) rotate(.8deg);filter:contrast(1.08) saturate(1.12)}
+.situation-card:focus-within .situation-image svg{transform:scale(1.12) rotate(.8deg)}
+@media (hover:hover){
+  .situations-carousel:not(.is-scrolling) .situation-card:hover .situation-image svg{transform:scale(1.12) rotate(.8deg)}
+}
 .situation-content{padding:clamp(20px,2vw,26px)}
 .situation-number{
   display:block;margin-bottom:12px;
