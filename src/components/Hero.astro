@@ -32,7 +32,17 @@ import { ICLOSED_DIAGNOSTIC_URL } from '../config/links';
     <div class="morph-pos">
       <figure class="morph-card">
         <div class="mc-inner">
-          <img class="mc-logo" src="/assets/logo-blanc-card.webp" alt="" width="720" height="124" loading="eager" fetchpriority="high" decoding="async">
+          <img
+            class="mc-logo"
+            src="/assets/logo-blanc-card.webp"
+            srcset="/assets/logo-blanc-card-360.webp 360w, /assets/logo-blanc-card.webp 720w"
+            sizes="min(38vw, 460px)"
+            alt=""
+            width="720"
+            height="124"
+            loading="eager"
+            decoding="async"
+          >
           <p class="mc-line">L'idée devient <b>marque</b>.</p>
           <a class="mc-cta" href={ICLOSED_DIAGNOSTIC_URL} target="_blank" rel="noopener noreferrer" data-iclosed-link={ICLOSED_DIAGNOSTIC_URL} data-embed-type="popup" aria-haspopup="dialog">Diagnostic gratuit</a>
           <div class="mc-dots">

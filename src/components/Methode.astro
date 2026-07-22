@@ -46,7 +46,10 @@ const steps = [
   class="method-cinematic is-enhanced is-static"
   data-tint="cinema"
   data-frame-root="/frames/method"
-  data-frame-count="181"
+  data-desktop-frames="181"
+  data-mobile-frames="121"
+  data-desktop-directory="desktop"
+  data-mobile-directory="mobile-optimized"
   data-scroll-screens="5.8"
   data-scrub="0.6"
   aria-labelledby="method-cinematic-title"
@@ -56,18 +59,40 @@ const steps = [
   </h2>
 
   <div class="method-cinematic-stage" data-method-stage>
-    <!-- Poster 900 px / 2,8 Ko : aucun écran vide avant le préchargement. -->
-    <img
-      class="method-cinematic-poster"
-      data-method-poster
-      src="/frames/method/mobile/frame_0001.webp"
-      alt=""
-      width="900"
-      height="506"
-      loading="lazy"
-      decoding="async"
-      aria-hidden="true"
-    >
+    <!-- Poster permanent : le canvas peut être purgé sans laisser de vide. -->
+    <picture class="method-cinematic-poster" aria-hidden="true">
+      <source
+        data-method-poster-avif
+        data-poster-srcset="/frames/method/poster-mobile.avif"
+        type="image/avif"
+      >
+      <source
+        data-method-poster-webp
+        data-poster-srcset="/frames/method/poster-mobile.webp"
+        type="image/webp"
+      >
+      <img
+        data-method-poster
+        src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
+        data-poster-src="/frames/method/poster-mobile.webp"
+        alt=""
+        width="480"
+        height="270"
+        loading="lazy"
+        decoding="async"
+        fetchpriority="low"
+      >
+    </picture>
+    <noscript>
+      <img
+        class="method-cinematic-poster method-cinematic-poster-noscript"
+        src="/frames/method/poster-mobile.webp"
+        alt=""
+        width="480"
+        height="270"
+        aria-hidden="true"
+      >
+    </noscript>
     <canvas class="method-cinematic-canvas" data-method-canvas aria-hidden="true"></canvas>
     <div class="method-cinematic-scrim" aria-hidden="true"></div>
 
@@ -132,23 +157,3 @@ const steps = [
     <p class="method-visually-hidden" data-method-status aria-live="polite">Étape 1 sur 5 : Comprendre</p>
   </div>
 </section>
-
-<!-- Amélioration progressive : le HTML reste lisible si le bundle principal
-     ou GSAP échoue. L'état cinématique est armé avant le premier rendu, puis
-     automatiquement annulé à load si le moteur n'a pas pris le relais. -->
-<script is:inline>
-  (function(){
-    var section = document.getElementById('methode');
-    var saveData = Boolean(navigator.connection && navigator.connection.saveData);
-    if(!section || saveData || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    section.classList.remove('is-static');
-    section.classList.add('is-booting');
-    addEventListener('load', function(){
-      requestAnimationFrame(function(){
-        if(section.classList.contains('is-runtime')) return;
-        section.classList.remove('is-booting');
-        section.classList.add('is-static');
-      });
-    }, {once:true});
-  })();
-</script>

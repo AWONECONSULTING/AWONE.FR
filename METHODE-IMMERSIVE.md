@@ -1,33 +1,81 @@
-# Méthode immersive — maintenance
+# Séquences immersives — maintenance
 
-La section `#methode` remplace l’ancienne présentation « Les 5 clés ». Son HTML éditorial et les positions desktop sont dans `src/components/Methode.astro`, son rendu dans `src/styles/global.css`, et son moteur dans `src/scripts/main.js` sous le bloc `Méthode immersive`.
+Les deux récits canvas sont isolés dans des modules différés :
+
+- `src/scripts/immersive-sequence.js` pour « On élève votre marque » ;
+- `src/scripts/method-sequence.js` pour « Les 5 clés » ;
+- `src/scripts/frame-sequence.js` pour le chargement, le cache décodé et l’arbitrage mémoire partagé.
+
+Le HTML éditorial reste dans `src/components/ImmersiveSequence.astro` et `src/components/Methode.astro`. Le rendu responsive est dans `src/styles/global.css`.
 
 ## Réglages exposés
 
-- `data-frame-root` : racine locale ou CDN des deux jeux d’images.
-- `data-frame-count` : nombre de frames, plafonné à 181 dans le moteur.
-- `data-scroll-screens` : longueur du scrub, actuellement `5.8` écrans.
-- `data-scrub` : amortissement ScrollTrigger, actuellement `0.6`.
-- `METHOD_CONFIG` : concurrence réseau et décodage, taille des caches, plafonds DPR/pixels, seuils de fondu, frame statique et debounce du resize.
-- tableau `steps` : textes, positions en pourcentage et côté d’ancrage des bulles.
+Les attributs `data-*` des composants permettent de changer sans fouiller le moteur :
 
-Les fichiers actuels sont servis depuis :
+- `data-frame-root` : racine locale ou URL CDN versionnée ;
+- `data-desktop-frames` et `data-mobile-frames` : nombre de frames de chaque lot ;
+- `data-desktop-directory` et `data-mobile-directory` : dossiers WebP ; le moteur ajoute `-avif` pour la variante AVIF ;
+- `data-scroll-screens` / `data-desktop-scroll-screens` / `data-mobile-scroll-screens` : longueur du récit ;
+- `data-scrub` / `data-desktop-scrub` / `data-mobile-scrub` : amortissement ScrollTrigger.
+
+Les objets `CONFIG` des deux moteurs regroupent les marges d’activation, la concurrence réseau, les plafonds DPR et pixels, les seuils de fondu et le debounce du redimensionnement. Le tableau `steps` de `Methode.astro` contient les textes et positions desktop/tablette des cinq bulles.
+
+## Lots servis
 
 ```text
-public/frames/method/desktop/frame_0001.webp … frame_0181.webp
-public/frames/method/mobile/frame_0001.webp  … frame_0181.webp
+public/frames/immersive/desktop/                 181 WebP · 1080 × 1934
+public/frames/immersive/desktop-avif/            181 AVIF · 1080 × 1934
+public/frames/immersive/mobile-optimized/         91 WebP ·  720 × 1289
+public/frames/immersive/mobile-optimized-avif/    91 AVIF ·  720 × 1289
+
+public/frames/method/desktop/                    181 WebP · 1440 × 810
+public/frames/method/desktop-avif/               181 AVIF · 1440 × 810
+public/frames/method/mobile-optimized/           121 WebP ·  720 × 405
+public/frames/method/mobile-optimized-avif/      121 AVIF ·  720 × 405
 ```
 
-Le poster initial est la première frame mobile, légère. Le lot complet ne part qu’à l’approche de la section (`IntersectionObserver`, marge de 1,5 écran). Les fichiers sont conservés sous forme de `Blob` compressés ; seule la première image doit être décodée avant l’activation du scrub, puis un cache borné garde les images proches de la position courante (12 desktop, 10 mobile). Les anciennes images décodées sont fermées et libérées.
+Poids complet demandé par un navigateur mobile :
 
-Avec `prefers-reduced-motion` ou le mode économie de données du navigateur, la section reste statique et ne demande qu’une seule frame. Le HTML des cinq étapes reste toujours lisible.
+| Séquence | AVIF | Repli WebP |
+|---|---:|---:|
+| Ascension | 2,04 Mio | 2,66 Mio |
+| Méthode | 2,28 Mio | 3,70 Mio |
 
-## Remplacer la séquence
+Chaque section dispose aussi d’un poster basse définition de 8 à 19 Kio. Son URL est conservée dans `data-poster-src` / `data-poster-srcset` et n’est injectée que lorsque le module approche : aucune frame ni aucun poster sous la ligne de flottaison ne part au démarrage de la page.
 
-1. Exporter au maximum 181 frames, toutes au même ratio et avec une numérotation continue sur quatre chiffres.
-2. Produire un lot desktop (1440 px actuellement) et un lot mobile (900 px actuellement).
-3. Remplacer le contenu des deux dossiers sans mélanger les dimensions.
-4. Si le nombre change, modifier `data-frame-count`; ne pas dépasser 181.
-5. Lancer `npm run build`, puis contrôler au minimum 360, 768, 1024, 1440, 1920 et 2560 px, ainsi que le paysage mobile et `prefers-reduced-motion`.
+## Cycle mémoire
 
-Pour passer sur Cloudinary ou Bunny, déposer les deux dossiers avec la même arborescence, remplacer `data-frame-root` par l’URL CDN et activer un cache immuable versionné. Les sources livrées sont uniquement en WebP : générer les variantes AVIF côté CDN avant d’activer une négociation AVIF/WebP.
+1. Le module est importé plusieurs écrans avant la section.
+2. L’`IntersectionObserver` interne réclame le bail mémoire à environ 1,5 écran.
+3. L’arbitre tient compte du sens de lecture lorsque les deux marges de préchargement se chevauchent, puis libère l’autre séquence avant toute nouvelle allocation.
+4. Toutes les frames du lot choisi sont téléchargées et passent par `img.decode()` avant l’activation du scrub.
+5. Les blobs compressés restent disponibles, mais seul un voisinage décodé borné suit la frame cible. Conserver les 181 surfaces RGBA de l’ascension dépasserait 1 Gio et reproduirait la purge iOS que le correctif doit éviter.
+6. Lorsque la section s’éloigne, requêtes, blobs, URLs objet et images sont supprimés ; le canvas est effacé puis réduit à 1 × 1. Le poster reste visible.
+
+Plafonds résidents actuels : 16 images pour l’ascension desktop, 22 mobile, 20 pour la méthode desktop et 32 mobile. Le gestionnaire de scroll ne dessine rien : il ne fait que modifier une cible entière. Le dessin et les demandes de voisinage sont coalescés par `requestAnimationFrame`.
+
+Dans DevTools, l’état se contrôle sans modifier le runtime :
+
+```js
+window.__awoneFrameMemory.snapshot()
+```
+
+La propriété `active` doit valoir `immersive`, `method` ou `null`, jamais les deux. Une section libérée doit afficher `phase: "idle"`, `decoded: 0`, `compressedMB: 0` et `canvasPixels: 1`.
+
+## Responsive et accessibilité
+
+- Desktop : Lenis avec `lerp: 0.09`, branché au ticker GSAP ; `lagSmoothing(0)`.
+- Tactile : scroll natif, aucun Lenis ; DPR canvas plafonné à 1,5, y compris sur tablette à pointeur grossier.
+- Mobile : lot optimisé, une seule bulle méthode active en bas et progression en haut ; aucun `backdrop-filter`.
+- `prefers-reduced-motion` ou économie de données : aucun pin, aucune séquence chargée, poster fixe et cinq étapes DOM empilées.
+
+## Remplacer une séquence
+
+1. Exporter des images de même ratio et numérotées `frame_0001` à `frame_NNNN` sans trou.
+2. Garder au maximum 181 frames desktop. Pour la méthode mobile, échantillonner à environ 120–150 frames et 720–900 px de large.
+3. Générer les variantes AVIF et WebP avec des noms strictement identiques dans les dossiers jumeaux (`lot` et `lot-avif`).
+4. Déposer le nouvel export dans un dossier versionné, par exemple `/frames/method-v2`, puis modifier `data-frame-root`. Ne pas réutiliser une URL déjà mise en cache avec `immutable`.
+5. Sur Cloudinary, Bunny ou un autre CDN, conserver l’arborescence, autoriser le CORS pour `awone.fr` et appliquer `Cache-Control: public, max-age=31536000, immutable`.
+6. Lancer `npm run build`, tester les allers-retours entre les deux sections et vérifier le snapshot mémoire ci-dessus.
+
+Le dépôt configure ce cache long pour `/frames/*` sur Vercel dans `vercel.json`. Un CDN externe peut être utilisé en remplaçant uniquement `data-frame-root`.

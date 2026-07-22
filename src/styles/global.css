@@ -1,3 +1,32 @@
+/* Déclarations hébergées dans le CSS du site, fichiers servis par le CDN
+   Fontshare conformément à leur licence. Cela supprime la feuille CSS
+   distante bloquante sans modifier les fontes ni leurs métriques. */
+@font-face{
+  font-family:"Clash Display";
+  src:url("https://cdn.fontshare.com/wf/FPDAZ2S6SW4QMSRIIKNNGTPM6VIXYMKO/5HNPQ453FRLIQWV2FNOBUU3FKTDZQVSG/Z3MGHFHX6DCTLQ55LJYRJ5MDCZPMFZU6.woff2") format("woff2");
+  font-weight:600;font-style:normal;font-display:swap;
+}
+@font-face{
+  font-family:"General Sans";
+  src:url("https://cdn.fontshare.com/wf/MFQT7HFGCR2L5ULQTW6YXYZXXHMPKLJ3/YWQ244D6TACUX5JBKATPOW5I5MGJ3G73/7YY3ZAAE3TRV2LANYOLXNHTPHLXVWTKH.woff2") format("woff2");
+  font-weight:400;font-style:normal;font-display:swap;
+}
+@font-face{
+  font-family:"General Sans";
+  src:url("https://cdn.fontshare.com/wf/3RZHWSNONLLWJK3RLPEKUZOMM56GO4LJ/BPDRY7AHVI3MCDXXVXTQQ76H3UXA63S3/SB2OEB6IKZPRR6JT4GFJ2TFT6HBB6AZN.woff2") format("woff2");
+  font-weight:500;font-style:normal;font-display:swap;
+}
+@font-face{
+  font-family:"General Sans";
+  src:url("https://cdn.fontshare.com/wf/K46YRH762FH3QJ25IQM3VAXAKCHEXXW4/ISLWQPUZHZF33LRIOTBMFOJL57GBGQ4B/3ZLMEXZEQPLTEPMHTQDAUXP5ZZXCZAEN.woff2") format("woff2");
+  font-weight:600;font-style:normal;font-display:swap;
+}
+@font-face{
+  font-family:"General Sans";
+  src:url("https://cdn.fontshare.com/wf/KWXO5X3YW4X7OLUMPO4X24HQJGJU7E2Q/VOWUQZS3YLP66ZHPTXAFSH6YACY4WJHT/NIQ54PVBBIWVK3PFSOIOUJSXIJ5WTNDP.woff2") format("woff2");
+  font-weight:700;font-style:normal;font-display:swap;
+}
+
 /* ══════════════════════════════════════════════════════════
    🎨 CHARTE GRAPHIQUE AWONE — Charte Essentielle officielle
    ══════════════════════════════════════════════════════════ */
@@ -20,6 +49,17 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
 html.lenis{scroll-behavior:auto}
+html.lenis,html.lenis body{height:auto}
+.lenis:not(.lenis-autoToggle).lenis-stopped{overflow:clip}
+.lenis [data-lenis-prevent],
+.lenis [data-lenis-prevent-wheel],
+.lenis [data-lenis-prevent-touch],
+.lenis [data-lenis-prevent-vertical],
+.lenis [data-lenis-prevent-horizontal]{overscroll-behavior:contain}
+.lenis.lenis-smooth iframe{pointer-events:none}
+.lenis.lenis-autoToggle{
+  transition-property:overflow;transition-duration:1ms;transition-behavior:allow-discrete;
+}
 body{
   background:var(--noir);color:var(--blanc);
   font-family:var(--font-texte);
@@ -145,6 +185,7 @@ body.menu-open{overflow:hidden}
 }
 .marquee .track{display:inline-flex;animation:scroll-x 36s linear infinite}
 .marquee:hover .track{animation-play-state:paused}
+.marquee.is-offscreen .track{animation-play-state:paused}
 .marquee .set{display:inline-flex;align-items:center}
 .marquee .set span{
   font-family:var(--font-titre);font-weight:600;
@@ -239,7 +280,9 @@ body.menu-open{overflow:hidden}
 .method-cinematic-canvas{
   position:absolute;inset:0;width:100%;height:100%;display:block;
 }
-.method-cinematic-poster{z-index:0;object-fit:cover;object-position:center;opacity:1;transition:opacity .28s ease}
+.method-cinematic-poster{z-index:0;opacity:1;transition:opacity .28s ease}
+.method-cinematic-poster img{width:100%;height:100%;object-fit:cover;object-position:center}
+.method-cinematic-poster-noscript{object-fit:cover;object-position:center}
 .method-cinematic-canvas{z-index:1;opacity:0;transition:opacity .28s ease;contain:strict}
 .method-cinematic.is-canvas-ready .method-cinematic-canvas{opacity:1}
 .method-cinematic.is-canvas-ready .method-cinematic-poster{opacity:0}
@@ -319,7 +362,7 @@ body.menu-open{overflow:hidden}
   opacity:0;pointer-events:none;transform:translate3d(0,8px,0);
   transition:opacity .36s ease,transform .42s cubic-bezier(.22,1,.36,1);
 }
-.method-cinematic.is-runtime:not(.is-ready):not(.is-static) .method-loader{
+.method-cinematic.is-loading:not(.is-ready):not(.is-static) .method-loader{
   opacity:1;transform:translate3d(0,0,0);
 }
 .method-cinematic.is-ready .method-loader{opacity:0;transform:translate3d(0,8px,0)}
@@ -338,6 +381,12 @@ body.menu-open{overflow:hidden}
 }
 .method-veil{
   position:absolute;inset:0;z-index:6;pointer-events:none;opacity:0;will-change:opacity;background:var(--noir);
+}
+.method-veil--exit{
+  background:
+    radial-gradient(120% 85% at 12% -5%,rgba(199,177,255,.3),transparent 58%),
+    radial-gradient(90% 70% at 105% 105%,rgba(51,79,215,.24),transparent 62%),
+    linear-gradient(180deg,rgba(14,12,18,.28),rgba(18,14,27,.68));
 }
 .method-cinematic.is-runtime .method-veil--entry{opacity:var(--method-entry-opacity,1)}
 .method-cinematic.is-runtime .method-veil--exit{opacity:var(--method-exit-opacity,0)}
@@ -433,7 +482,7 @@ body.menu-open{overflow:hidden}
   max-width:1180px;margin:0 auto;padding:clamp(22px,4vw,44px);border-radius:28px;
 }
 .method-cinematic.is-static .method-cinematic-poster{
-  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.24;
+  position:absolute;inset:0;width:100%;height:100%;opacity:.24;
 }
 .method-cinematic.is-static .method-cinematic-canvas,
 .method-cinematic.is-static .method-loader,
@@ -818,7 +867,9 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
 
 /* ══════════════ IMMERSIVE — séquence 3D pré-rendue sur canvas ════════ */
 .immersive-sequence{
-  height:100vh;height:100svh;min-height:620px;padding:0;overflow:visible;
+  --immersive-scroll-height:420svh;
+  height:var(--immersive-scroll-height);min-height:var(--immersive-scroll-height);
+  padding:0;overflow:visible;
   background:#080707;isolation:isolate;
 }
 .immersive-sequence::after{
@@ -828,20 +879,24 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
     #FDEAD2 0%,#FDEAD2 58%,rgba(255,255,125,.96) 88%,rgba(255,255,125,0) 100%);
 }
 .immersive-stage{
-  position:relative;z-index:1;width:100%;height:100vh;height:100svh;min-height:620px;overflow:hidden;
+  position:sticky;top:0;z-index:1;width:100%;height:100vh;height:100svh;min-height:620px;overflow:hidden;
   background:
     radial-gradient(90% 70% at 70% 20%,rgba(255,111,60,.12),transparent 62%),
     linear-gradient(180deg,#0A0A0A,#120B09 58%,#080707);
+  contain:layout paint style;
 }
+.immersive-sequence.is-scroll-ready .immersive-stage{position:relative}
 .immersive-canvas,.immersive-poster{
   position:absolute;inset:0;width:100%;height:100%;display:block;
 }
 .immersive-canvas{
-  opacity:0;transform:scale(1.012);
-  transition:opacity .7s ease,transform 1.2s cubic-bezier(.16,1,.3,1);
+  z-index:0;opacity:0;transition:opacity .28s ease;contain:strict;
 }
-.immersive-sequence.is-ready .immersive-canvas{opacity:1;transform:scale(1)}
-.immersive-poster{object-fit:cover;object-position:center}
+.immersive-sequence.is-canvas-ready .immersive-canvas{opacity:1}
+.immersive-poster{z-index:0;opacity:1;transition:opacity .28s ease}
+.immersive-poster img{width:100%;height:100%;object-fit:cover;object-position:center}
+.immersive-poster-noscript{object-fit:cover;object-position:center}
+.immersive-sequence.is-canvas-ready .immersive-poster{opacity:0}
 .immersive-shade{
   position:absolute;inset:0;z-index:1;pointer-events:none;
   background:
@@ -881,7 +936,11 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
   width:min(270px,calc(100% - 40px));padding:.82rem 1rem;border-radius:14px;
   color:rgba(252,252,252,.66);background:rgba(10,10,10,.48);
   border:1px solid rgba(252,252,252,.1);backdrop-filter:none;
+  opacity:0;pointer-events:none;transform:translate3d(0,8px,0);
   transition:opacity .45s ease,transform .45s cubic-bezier(.16,1,.3,1);
+}
+.immersive-sequence.is-loading .immersive-loader{
+  opacity:1;pointer-events:auto;transform:translate3d(0,0,0);
 }
 .immersive-loader-label{
   font-size:.62rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
@@ -900,21 +959,29 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
   transition:transform .18s linear;
 }
 .immersive-sequence.is-loaded .immersive-loader{
-  opacity:0;transform:translateY(8px);pointer-events:none;
+  opacity:0;transform:translate3d(0,8px,0);pointer-events:none;
 }
 .immersive-hint{
   position:absolute;z-index:3;left:50%;bottom:clamp(24px,4vh,44px);
   display:flex;flex-direction:column;align-items:center;gap:.7rem;
-  transform:translateX(-50%);color:rgba(252,252,252,.58);
+  transform:translate3d(-50%,8px,0);opacity:0;color:rgba(252,252,252,.58);
   font-size:.62rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;
-  white-space:nowrap;will-change:opacity;
+  white-space:nowrap;will-change:transform,opacity;
+  transition:opacity .35s ease,transform .45s cubic-bezier(.16,1,.3,1);
 }
+.immersive-sequence.is-loaded .immersive-hint{opacity:1;transform:translate3d(-50%,0,0)}
 .immersive-hint i{
   width:1px;height:34px;background:linear-gradient(var(--creme),transparent);
   animation:immersive-pulse 2s ease-in-out infinite;
 }
 @keyframes immersive-pulse{0%,100%{opacity:.3;transform:scaleY(.7)}50%{opacity:1;transform:scaleY(1)}}
 .immersive-sequence.is-static .immersive-hint{display:none}
+.immersive-sequence.is-static{
+  height:100vh;height:100svh;min-height:620px;
+}
+.immersive-sequence.is-static .immersive-stage{position:relative}
+.immersive-sequence.is-static .immersive-loader,
+.immersive-sequence.is-static .immersive-canvas{display:none}
 
 .immersive-exit{
   position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;
@@ -952,7 +1019,9 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
 .immersive-sequence.is-static .immersive-spinner{width:clamp(180px,28vw,320px)}
 
 @media (max-width:760px){
-  .immersive-sequence,.immersive-stage{min-height:100vh;min-height:100svh}
+  .immersive-sequence{--immersive-scroll-height:340svh;min-height:var(--immersive-scroll-height)}
+  .immersive-stage{min-height:100vh;min-height:100svh}
+  .immersive-sequence.is-static{height:100vh;height:100svh;min-height:100svh}
   .immersive-sequence::after{height:54svh;min-height:250px}
   .immersive-copy{
     top:calc(env(safe-area-inset-top,0px) + clamp(76px,10.5svh,108px));
@@ -963,13 +1032,12 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
   .immersive-subtitle{max-width:32ch;margin-top:.9rem;font-size:clamp(.82rem,3.7vw,.9rem);line-height:1.48}
   .immersive-loader{
     right:16px;bottom:calc(18px + env(safe-area-inset-bottom,0px));
-    width:min(250px,calc(100% - 32px));backdrop-filter:blur(6px)
+    width:min(250px,calc(100% - 32px));background:rgba(10,10,10,.9);
+    backdrop-filter:none;-webkit-backdrop-filter:none
   }
   .immersive-hint{
-    bottom:calc(104px + env(safe-area-inset-bottom,0px));
-    transition:bottom .45s cubic-bezier(.16,1,.3,1)
+    bottom:calc(24px + env(safe-area-inset-bottom,0px))
   }
-  .immersive-sequence.is-loaded .immersive-hint{bottom:calc(24px + env(safe-area-inset-bottom,0px))}
   .immersive-spinner{width:clamp(190px,68vw,300px)}
   .immersive-exit{gap:17px;padding:0 18px}
   .immersive-exit-label{font-size:.6rem;letter-spacing:.2em}
@@ -991,11 +1059,13 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
   .immersive-copy h2{font-size:clamp(2.08rem,10.8vw,3rem)}
   .immersive-eyebrow{margin-bottom:.58rem}
   .immersive-subtitle{margin-top:.62rem;line-height:1.38}
-  .immersive-sequence.is-loaded .immersive-hint{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+  .immersive-hint{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 }
 
 @media (max-width:932px) and (max-height:560px) and (orientation:landscape){
-  .immersive-sequence,.immersive-stage{height:100svh;min-height:100svh}
+  .immersive-sequence{--immersive-scroll-height:340svh;height:var(--immersive-scroll-height);min-height:var(--immersive-scroll-height)}
+  .immersive-stage{height:100svh;min-height:100svh}
+  .immersive-sequence.is-static{height:100svh;min-height:100svh}
   .immersive-sequence::after{height:70svh;min-height:210px}
   .immersive-copy{
     top:calc(env(safe-area-inset-top,0px) + 52px);
@@ -1007,7 +1077,6 @@ html.no-gsap .ht-dark,html.no-gsap .ht-hint{display:none}
   .immersive-loader{right:12px;bottom:10px;width:218px;padding:.58rem .72rem}
   .immersive-loader-label{font-size:.54rem}
   .immersive-hint{bottom:12px;gap:.35rem;font-size:.52rem}
-  .immersive-sequence.is-loaded .immersive-hint{bottom:12px}
   .immersive-hint i{height:18px}
   .immersive-exit{gap:10px}
   .immersive-spinner{width:clamp(190px,34vw,270px)}
