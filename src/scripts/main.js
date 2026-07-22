@@ -7,41 +7,50 @@ import 'lenis/dist/lenis.css';
 gsap.registerPlugin(ScrollTrigger);
 ScrollTrigger.config({ignoreMobileResize:true});
 
-/* ── Défilement principal : Lenis alimente le même ticker que GSAP.
-     Les deux carrousels horizontaux restent gérés nativement. ── */
+/* ── Défilement principal : l'inertie Lenis reste réservée aux appareils
+     de bureau précis. Le tactile conserve son scroll natif, plus stable et
+     moins coûteux que la synchronisation artificielle de chaque geste. ── */
 (function(){
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if(reduced) return;
-
-  var coarsePointer = window.matchMedia('(pointer:coarse)').matches;
-  var isIOS = /iP(ad|hone|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var iosVersion = navigator.userAgent.match(/OS (\d+)_/) || navigator.userAgent.match(/Version\/(\d+)/);
-  var legacyIOS = Boolean(isIOS && iosVersion && parseInt(iosVersion[1], 10) < 16);
+  var precisePointer = window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if(reduced || !precisePointer) return;
 
   var lenis = new Lenis({
     lerp:.09,
     smoothWheel:true,
-    syncTouch:coarsePointer && !legacyIOS,
-    syncTouchLerp:.085,
-    touchInertiaExponent:1.6,
-    touchMultiplier:1,
+    syncTouch:false,
     wheelMultiplier:.95,
     anchors:{offset:-72},
     stopInertiaOnNavigate:true,
     prevent:function(node){
       if(!(node instanceof Element)) return false;
-      if(node.closest('.brands-track,.situations-carousel')) return true;
-      var methodReel = node.closest('.method-steps');
-      if(!methodReel) return false;
-      var methodOverflow = getComputedStyle(methodReel).overflowY;
-      return /auto|scroll/.test(methodOverflow) && methodReel.scrollHeight > methodReel.clientHeight + 1;
+      return Boolean(node.closest('.brands-track,.situations-carousel'));
     }
   });
 
   lenis.on('scroll', ScrollTrigger.update);
   gsap.ticker.add(function(time){ lenis.raf(time * 1000); });
-  gsap.ticker.lagSmoothing(0);
+  gsap.ticker.lagSmoothing(500, 33);
   window.__awoneLenis = lenis;
+})();
+
+/* Les animations décoratives continues sont mises en pause uniquement
+   pendant le déplacement de la page. Les reveals, eux, restent pilotés
+   par leurs transitions et ne sont donc jamais interrompus. */
+(function(){
+  var idle = 0;
+  var scrolling = false;
+  window.addEventListener('scroll', function(){
+    if(!scrolling){
+      scrolling = true;
+      document.body.classList.add('is-scrolling');
+    }
+    clearTimeout(idle);
+    idle = setTimeout(function(){
+      scrolling = false;
+      document.body.classList.remove('is-scrolling');
+    }, 120);
+  }, {passive:true});
 })();
 
 /* Le CTA flottant reste hors champ pendant tout le récit du hero,
@@ -127,11 +136,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
           {opacity:0,y:mob?14:20},
           {opacity:1,y:0,duration:.2,ease:'none',force3D:true}, .76);
 
-      if(mob){
-        tl.to('.mc-logo', {opacity:1,scale:1.018,duration:.18,ease:'none',force3D:true}, .76);
-      } else {
-        tl.to('.mc-logo', {filter:'drop-shadow(0 6px 30px rgba(199,177,255,.6))',duration:.18,ease:'none'}, .76);
-      }
+      tl.to('.mc-logo', {opacity:1,scale:1.018,duration:.18,ease:'none',force3D:true}, .76);
 
       return function(){
         tl.scrollTrigger && tl.scrollTrigger.kill();
@@ -139,15 +144,6 @@ ScrollTrigger.config({ignoreMobileResize:true});
       };
     });
 
-    /* ── Situations : apparitions douces en cascade (réf. UpSunday) ── */
-    gsap.from('.situations-header > *', {
-      opacity:0, y:50, duration:1, stagger:.12, ease:'power3.out',
-      scrollTrigger:{ trigger:'.situations-section', start:'top 75%' }
-    });
-    gsap.from('.situations-carousel-wrapper', {
-      opacity:0, y:50, duration:.9, ease:'power3.out',
-      scrollTrigger:{ trigger:'.situations-carousel', start:'top 88%' }
-    });
   window.addEventListener('load', function(){ ScrollTrigger.refresh(); });
 })();
 
@@ -527,385 +523,548 @@ ScrollTrigger.config({ignoreMobileResize:true});
   }
 })();
 
-/* ── Méthode mobile : rail vertical infini à focus central.
-     Le geste reste natif ; les commandes et le clavier utilisent le même
-     mouvement amorti. Les copies de boucle sont masquées aux technologies
-     d'assistance, qui ne parcourent que les cinq étapes originales. ── */
+/* ── Méthode immersive : 181 images décodées avant activation, puis un
+     rendu canvas cadencé indépendamment des événements de scroll. ── */
 (function(){
   var section = document.getElementById('methode');
-  var reel = document.getElementById('methodReel');
-  if(!section || !reel) return;
+  if(!section) return;
 
-  var mobileQuery = window.matchMedia('(max-width:900px), (max-width:932px) and (max-height:560px) and (orientation:landscape)');
+  var stage = section.querySelector('[data-method-stage]');
+  var canvas = section.querySelector('[data-method-canvas]');
+  var poster = section.querySelector('[data-method-poster]');
+  var loaderLabel = section.querySelector('[data-method-loader-label]');
+  var loaderValue = section.querySelector('[data-method-loader-value]');
+  var loaderTrack = section.querySelector('[data-method-loader-track]');
+  var loaderBar = loaderTrack && loaderTrack.querySelector('i');
+  var status = section.querySelector('[data-method-status]');
+  var nodes = Array.prototype.slice.call(section.querySelectorAll('[data-method-node]'));
+  var connectors = Array.prototype.slice.call(section.querySelectorAll('[data-method-connector]'));
+  var progressDots = Array.prototype.slice.call(section.querySelectorAll('[data-method-progress-dot]'));
 
-  var originals = Array.prototype.slice.call(reel.querySelectorAll('.step'));
-  var count = originals.length;
-  if(!count) return;
-
-  var previous = section.querySelector('.method-reel-prev');
-  var next = section.querySelector('.method-reel-next');
-  var indexes = Array.prototype.slice.call(section.querySelectorAll('[data-method-index]'));
-  var status = section.querySelector('.method-reel-status');
-  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  function prepareOriginal(card, index){
-    card.dataset.methodLogical = String(index);
-  }
-
-  function makeClone(card){
-    var clone = card.cloneNode(true);
-    clone.classList.remove('reveal', 'visible', 'is-active', 'is-expanded');
-    clone.removeAttribute('data-i');
-    clone.setAttribute('data-method-clone', '');
-    clone.setAttribute('aria-hidden', 'true');
-    clone.setAttribute('inert', '');
-    clone.querySelectorAll('[id]').forEach(function(node){ node.removeAttribute('id'); });
-    clone.querySelectorAll('[aria-controls]').forEach(function(node){ node.removeAttribute('aria-controls'); });
-    clone.querySelectorAll('button').forEach(function(button){ button.setAttribute('tabindex', '-1'); });
-    return clone;
-  }
-
-  originals.forEach(prepareOriginal);
-  var before = document.createDocumentFragment();
-  var after = document.createDocumentFragment();
-  originals.forEach(function(card){
-    before.appendChild(makeClone(card));
-    after.appendChild(makeClone(card));
+  /* CONFIG — tous les réglages de la séquence sont regroupés ici.
+     frameRoot peut devenir une URL CDN sans toucher au moteur. */
+  var METHOD_CONFIG = Object.freeze({
+    frameRoot:(section.dataset.frameRoot || '/frames/method').replace(/\/$/, ''),
+    frameCount:Math.min(181, Math.max(1, parseInt(section.dataset.frameCount, 10) || 181)),
+    scrollScreens:Math.max(1, parseFloat(section.dataset.scrollScreens) || 5.8),
+    scrub:Math.max(0, parseFloat(section.dataset.scrub) || .6),
+    mobileBreakpoint:767,
+    preloadMargin:'150% 0px',
+    desktopConcurrency:6,
+    mobileConcurrency:4,
+    maxDpr:2,
+    mobileDpr:1.5,
+    desktopPixelBudget:3200000,
+    mobilePixelBudget:1800000,
+    entryEnd:.06,
+    exitStart:.88,
+    stepsEnd:.88,
+    staticFrame:90,
+    resizeDelay:180
   });
-  reel.insertBefore(before, reel.firstChild);
-  reel.appendChild(after);
 
-  var cards = Array.prototype.slice.call(reel.querySelectorAll('.step'));
-  var cardCenters = [];
-  var setHeight = 0;
-  var currentPhysical = -1;
-  var currentLogical = -1;
-  var focusRaf = 0;
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var mobileLayout = window.matchMedia(
+    '(max-width:' + METHOD_CONFIG.mobileBreakpoint + 'px), ' +
+    '(max-width:932px) and (max-height:560px) and (pointer:coarse)'
+  );
+  /* Le jeu reste fixe pendant la visite : aucun second téléchargement lors
+     d'une rotation. Les téléphones en paysage gardent le lot 900 px. */
+  var useMobileFrames = mobileLayout.matches;
+  var frameDirectory = useMobileFrames ? 'mobile' : 'desktop';
+  var frames = new Array(METHOD_CONFIG.frameCount);
+  var decodedCount = 0;
+  var preloadStarted = false;
+  var preloadObserver = null;
+  var visibilityObserver = null;
+  var scrollTween = null;
   var resizeTimer = 0;
-  var idleTimer = 0;
-  var controlled = false;
+  var loaderRaf = 0;
+  var paintRaf = 0;
+  var activeStep = -1;
+  var targetFrame = 0;
+  var drawnFrame = -1;
+  var targetProgress = 0;
+  var paintedProgress = -1;
+  var lastStageWidth = 0;
+  var lastStageHeight = 0;
+  var context = null;
 
-  section.classList.add('method-carousel-ready');
+  function padFrame(value){
+    return String(value).padStart(4, '0');
+  }
 
-  function center(card){ return card.offsetTop + card.offsetHeight / 2; }
-  function targetFor(card){ return center(card) - reel.clientHeight / 2; }
+  function frameUrl(index){
+    return METHOD_CONFIG.frameRoot + '/' + frameDirectory + '/frame_' + padFrame(index + 1) + '.webp';
+  }
 
-  function closestPhysical(){
-    var midpoint = reel.scrollTop + reel.clientHeight / 2;
-    var best = 0;
-    var distance = Infinity;
-    for(var i = 0; i < cards.length; i++){
-      var delta = Math.abs(cardCenters[i] - midpoint);
-      if(delta < distance){ distance = delta; best = i; }
+  function setMethodVisible(visible){
+    document.body.classList.toggle('method-cinematic-active', Boolean(visible));
+  }
+
+  function activateStatic(message){
+    if(preloadObserver) preloadObserver.disconnect();
+    if(visibilityObserver) visibilityObserver.disconnect();
+    if(scrollTween){
+      if(scrollTween.scrollTrigger) scrollTween.scrollTrigger.kill();
+      scrollTween.kill();
+      scrollTween = null;
     }
-    return best;
+    if(paintRaf) cancelAnimationFrame(paintRaf);
+    if(loaderRaf) cancelAnimationFrame(loaderRaf);
+    section.classList.remove('is-booting', 'is-runtime', 'is-ready', 'is-canvas-ready', 'is-scroll-ready', 'has-started');
+    section.classList.add('is-static');
+    setMethodVisible(false);
+    if(poster) poster.src = frameUrl(Math.min(METHOD_CONFIG.staticFrame, METHOD_CONFIG.frameCount - 1));
+    if(status) status.textContent = message || 'Les cinq étapes de la méthode AWONE';
   }
 
-  function measure(){
-    cardCenters = cards.map(center);
-    setHeight = cardCenters[count] - cardCenters[0];
+  if(
+    reducedMotion.matches ||
+    !stage ||
+    !canvas ||
+    nodes.length !== 5 ||
+    !('requestAnimationFrame' in window)
+  ){
+    activateStatic(
+      reducedMotion.matches
+        ? 'Animation désactivée : les cinq étapes sont affichées.'
+        : 'Séquence indisponible : les cinq étapes sont affichées.'
+    );
+    return;
   }
 
-  function syncControls(card, active){
-    if(card.hasAttribute('data-method-clone')) return;
-    var expanded = card.classList.contains('is-expanded');
-    var more = card.querySelector('.method-more');
-    var back = card.querySelector('.method-back');
-    if(more) more.tabIndex = mobileQuery.matches && active && !expanded ? 0 : -1;
-    if(back) back.tabIndex = mobileQuery.matches && active && expanded ? 0 : -1;
+  try {
+    context = canvas.getContext('2d', {alpha:false, desynchronized:true});
+  } catch(error) {
+    context = null;
+  }
+  if(!context){
+    activateStatic('Canvas indisponible : les cinq étapes sont affichées.');
+    return;
   }
 
-  function collapse(card){
-    if(!card || !card.classList.contains('is-expanded')) return;
-    card.classList.remove('is-expanded');
-    var more = card.querySelector('.method-more');
-    var front = card.querySelector('.step-front');
-    var detail = card.querySelector('.step-detail');
-    if(more) more.setAttribute('aria-expanded', 'false');
-    if(front) front.setAttribute('aria-hidden', 'false');
-    if(detail) detail.setAttribute('aria-hidden', 'true');
-    syncControls(card, card.classList.contains('is-active'));
+  section.classList.remove('is-static', 'is-booting');
+  section.classList.add('is-runtime');
+  section.style.setProperty('--method-scroll-height', ((METHOD_CONFIG.scrollScreens + 1) * 100) + 'svh');
+
+  if('IntersectionObserver' in window){
+    visibilityObserver = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){ setMethodVisible(entry.isIntersecting); });
+    }, {threshold:0});
+    visibilityObserver.observe(section);
   }
 
-  function syncAccessibility(){
-    originals.forEach(function(card){
-      var front = card.querySelector('.step-front');
-      var detail = card.querySelector('.step-detail');
-      if(mobileQuery.matches){
-        if(front) front.setAttribute('aria-hidden', String(card.classList.contains('is-expanded')));
-        if(detail) detail.setAttribute('aria-hidden', String(!card.classList.contains('is-expanded')));
-      } else {
-        card.classList.remove('is-expanded', 'is-active');
-        card.removeAttribute('aria-current');
-        if(front) front.removeAttribute('aria-hidden');
-        if(detail) detail.removeAttribute('aria-hidden');
-        var more = card.querySelector('.method-more');
-        if(more) more.setAttribute('aria-expanded', 'false');
+  function updateLoader(){
+    loaderRaf = 0;
+    var ratio = decodedCount / METHOD_CONFIG.frameCount;
+    var percent = Math.round(ratio * 100);
+    if(loaderValue) loaderValue.textContent = percent + '%';
+    if(loaderBar) loaderBar.style.transform = 'scaleX(' + ratio.toFixed(4) + ')';
+    if(loaderTrack) loaderTrack.setAttribute('aria-valuenow', String(percent));
+  }
+
+  function scheduleLoaderUpdate(){
+    if(!loaderRaf) loaderRaf = requestAnimationFrame(updateLoader);
+  }
+
+  function loadImage(index){
+    return new Promise(function(resolve, reject){
+      var image = new Image();
+      image.decoding = 'async';
+      image.loading = 'eager';
+      image.onload = function(){
+        image.onload = null;
+        image.onerror = null;
+        if(!image.naturalWidth){
+          reject(new Error('Frame vide : ' + frameUrl(index)));
+          return;
+        }
+        if(typeof image.decode === 'function'){
+          image.decode().then(function(){ resolve(image); }).catch(reject);
+        } else {
+          resolve(image);
+        }
+      };
+      image.onerror = function(){
+        image.onload = null;
+        image.onerror = null;
+        reject(new Error('Frame introuvable : ' + frameUrl(index)));
+      };
+      image.src = frameUrl(index);
+    });
+  }
+
+  function decodeFrame(index, attempt){
+    return loadImage(index).then(function(image){
+      frames[index] = image;
+      decodedCount += 1;
+      scheduleLoaderUpdate();
+    }).catch(function(error){
+      if(attempt < 1) return decodeFrame(index, attempt + 1);
+      throw error;
+    });
+  }
+
+  function preloadOrder(){
+    var order = [];
+    var seen = new Set();
+    function add(index){
+      index = Math.max(0, Math.min(METHOD_CONFIG.frameCount - 1, Math.round(index)));
+      if(seen.has(index)) return;
+      seen.add(index);
+      order.push(index);
+    }
+    add(0);
+    for(var step = 1; step < nodes.length; step++){
+      add((METHOD_CONFIG.frameCount - 1) * METHOD_CONFIG.stepsEnd * step / nodes.length);
+    }
+    add(METHOD_CONFIG.staticFrame);
+    add(METHOD_CONFIG.frameCount - 1);
+    for(var index = 0; index < METHOD_CONFIG.frameCount; index++) add(index);
+    return order;
+  }
+
+  function startPreload(){
+    if(preloadStarted) return;
+    preloadStarted = true;
+    if(preloadObserver) preloadObserver.disconnect();
+    if(loaderLabel) loaderLabel.textContent = 'Préparation de l’expérience';
+
+    var queue = preloadOrder();
+    var cursor = 0;
+    var failures = [];
+    var concurrency = useMobileFrames
+      ? METHOD_CONFIG.mobileConcurrency
+      : METHOD_CONFIG.desktopConcurrency;
+
+    function worker(){
+      if(cursor >= queue.length) return Promise.resolve();
+      var index = queue[cursor++];
+      return decodeFrame(index, 0)
+        .catch(function(error){ failures.push(error); })
+        .then(worker);
+    }
+
+    var workers = [];
+    for(var i = 0; i < concurrency; i++) workers.push(worker());
+
+    Promise.all(workers).then(function(){
+      updateLoader();
+      if(failures.length || decodedCount !== METHOD_CONFIG.frameCount){
+        activateStatic('La séquence 3D n’a pas pu être chargée. Les cinq étapes restent disponibles.');
+        return;
       }
-      syncControls(card, false);
+      /* Le 100 % est peint avant la disparition du loader. */
+      requestAnimationFrame(function(){ requestAnimationFrame(activateSequence); });
     });
   }
 
-  function updateIndicators(logical){
-    if(logical === currentLogical) return;
-    currentLogical = logical;
-    indexes.forEach(function(button, index){
-      var active = index === logical;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-pressed', String(active));
+  function layoutConnectors(){
+    if(mobileLayout.matches) return;
+    connectors.forEach(function(connector, index){
+      var first = nodes[index];
+      var second = nodes[index + 1];
+      if(!first || !second) return;
+      var ax = first.offsetLeft;
+      var ay = first.offsetTop;
+      var bx = second.offsetLeft;
+      var by = second.offsetTop;
+      var dx = bx - ax;
+      var dy = by - ay;
+      connector.style.left = ax + 'px';
+      connector.style.top = ay + 'px';
+      connector.style.width = Math.hypot(dx, dy) + 'px';
+      connector.style.setProperty('--connector-angle', (Math.atan2(dy, dx) * 180 / Math.PI) + 'deg');
     });
-    originals.forEach(function(card, index){
-      if(index === logical) card.setAttribute('aria-current', 'step');
-      else card.removeAttribute('aria-current');
-    });
-    var title = originals[logical] && originals[logical].dataset.methodTitle;
-    if(status) status.textContent = 'Étape ' + (logical + 1) + ' sur ' + count + ' · ' + title;
   }
 
-  function updateFocus(){
-    focusRaf = 0;
-    if(!mobileQuery.matches) return;
-    var midpoint = reel.scrollTop + reel.clientHeight / 2;
-    var stride = Math.max(1, cardCenters[count + 1] - cardCenters[count]);
-    var nearest = 0;
-    var nearestDistance = Infinity;
-
-    cards.forEach(function(card, index){
-      var distance = Math.abs(cardCenters[index] - midpoint);
-      var ratio = Math.min(1, distance / stride);
-      var focus = 1 - ratio;
-      card.style.setProperty('--method-scale', (.86 + focus * .14).toFixed(3));
-      card.style.setProperty('--method-opacity', (.32 + focus * .68).toFixed(3));
-      card.style.setProperty('--method-blur', (ratio * 1.35).toFixed(2) + 'px');
-      card.style.setProperty('--method-saturation', (.72 + focus * .28).toFixed(3));
-      if(distance < nearestDistance){ nearestDistance = distance; nearest = index; }
-    });
-
-    if(nearest !== currentPhysical){
-      currentPhysical = nearest;
-      cards.forEach(function(card, index){
-        var active = index === nearest;
-        card.classList.toggle('is-active', active);
-        if(!active) collapse(card);
-        syncControls(card, active);
-      });
-      updateIndicators(parseInt(cards[nearest].dataset.methodLogical, 10));
-    }
+  function canvasDpr(width, height){
+    var deviceDpr = Math.min(window.devicePixelRatio || 1, METHOD_CONFIG.maxDpr);
+    var budget = useMobileFrames
+      ? METHOD_CONFIG.mobilePixelBudget
+      : METHOD_CONFIG.desktopPixelBudget;
+    var budgetDpr = Math.sqrt(budget / Math.max(1, width * height));
+    var layoutCap = useMobileFrames ? METHOD_CONFIG.mobileDpr : METHOD_CONFIG.maxDpr;
+    return Math.max(.75, Math.min(deviceDpr, layoutCap, budgetDpr));
   }
 
-  function scheduleFocus(){
-    if(!focusRaf) focusRaf = requestAnimationFrame(updateFocus);
-  }
-
-  function loopFix(){
-    if(!mobileQuery.matches || controlled || !setHeight) return false;
-    var index = closestPhysical();
-    var shift = 0;
-    if(index < count) shift = setHeight;
-    else if(index >= count * 2) shift = -setHeight;
-    if(!shift) return false;
-
-    reel.classList.add('is-jumping');
-    reel.scrollTop += shift;
-    requestAnimationFrame(function(){ reel.classList.remove('is-jumping'); scheduleFocus(); });
+  function resizeCanvas(force){
+    var width = Math.max(1, Math.round(stage.clientWidth || window.innerWidth));
+    var height = Math.max(1, Math.round(stage.clientHeight || window.innerHeight));
+    if(!force && width === lastStageWidth && height === lastStageHeight) return false;
+    lastStageWidth = width;
+    lastStageHeight = height;
+    var dpr = canvasDpr(width, height);
+    var pixelWidth = Math.max(1, Math.round(width * dpr));
+    var pixelHeight = Math.max(1, Math.round(height * dpr));
+    if(canvas.width !== pixelWidth) canvas.width = pixelWidth;
+    if(canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    drawnFrame = -1;
+    layoutConnectors();
+    schedulePaint();
     return true;
   }
 
-  function animateToPhysical(index){
-    if(!mobileQuery.matches) return;
-    index = Math.max(0, Math.min(cards.length - 1, index));
-    gsap.killTweensOf(reel);
-    controlled = true;
-    reel.classList.add('is-controlled');
-    if(reduced){
-      reel.scrollTop = targetFor(cards[index]);
-      controlled = false;
-      reel.classList.remove('is-controlled');
-      loopFix();
-      scheduleFocus();
-      return;
+  function drawFrame(index){
+    var image = frames[index];
+    if(!image || !image.naturalWidth) return false;
+    var canvasWidth = canvas.width;
+    var canvasHeight = canvas.height;
+    var scale = Math.max(
+      canvasWidth / image.naturalWidth,
+      canvasHeight / image.naturalHeight
+    );
+    var width = image.naturalWidth * scale;
+    var height = image.naturalHeight * scale;
+    context.fillStyle = '#0A0A0A';
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
+    context.drawImage(
+      image,
+      (canvasWidth - width) * .5,
+      (canvasHeight - height) * .5,
+      width,
+      height
+    );
+    return true;
+  }
+
+  function setStep(index){
+    index = Math.max(0, Math.min(nodes.length - 1, index));
+    if(index === activeStep) return;
+    activeStep = index;
+    nodes.forEach(function(node, nodeIndex){
+      var isActive = nodeIndex === index;
+      node.classList.toggle('is-active', isActive);
+      node.classList.toggle('is-done', nodeIndex < index);
+      node.classList.toggle('is-future', nodeIndex > index);
+      if(isActive) node.setAttribute('aria-current', 'step');
+      else node.removeAttribute('aria-current');
+    });
+    connectors.forEach(function(connector, connectorIndex){
+      connector.classList.toggle('is-grown', connectorIndex < index);
+    });
+    progressDots.forEach(function(dot, dotIndex){
+      dot.classList.toggle('is-active', dotIndex === index);
+      dot.classList.toggle('is-done', dotIndex < index);
+    });
+    if(status){
+      status.textContent =
+        'Étape ' + (index + 1) + ' sur ' + nodes.length + ' : ' +
+        (nodes[index].dataset.title || '');
     }
-    gsap.to(reel, {
-      scrollTop:targetFor(cards[index]),
-      duration:.68,
-      ease:'power3.out',
-      overwrite:true,
-      onUpdate:scheduleFocus,
-      onComplete:function(){
-        controlled = false;
-        reel.classList.remove('is-controlled');
-        loopFix();
-        scheduleFocus();
+  }
+
+  function paintStory(progress){
+    var clamped = Math.max(0, Math.min(1, progress));
+    var stepProgress = Math.min(1, clamped / METHOD_CONFIG.stepsEnd);
+    var stepIndex = Math.min(nodes.length - 1, Math.floor(stepProgress * nodes.length));
+    var entryOpacity = clamped < METHOD_CONFIG.entryEnd
+      ? (METHOD_CONFIG.entryEnd - clamped) / METHOD_CONFIG.entryEnd
+      : 0;
+    var exitOpacity = clamped > METHOD_CONFIG.exitStart
+      ? (clamped - METHOD_CONFIG.exitStart) / (1 - METHOD_CONFIG.exitStart)
+      : 0;
+
+    setStep(stepIndex);
+    section.classList.toggle('has-started', clamped > .025);
+    section.style.setProperty('--method-entry-opacity', entryOpacity.toFixed(4));
+    section.style.setProperty('--method-exit-opacity', exitOpacity.toFixed(4));
+  }
+
+  function flushPaint(){
+    paintRaf = 0;
+    if(drawnFrame !== targetFrame && drawFrame(targetFrame)) drawnFrame = targetFrame;
+    if(paintedProgress !== targetProgress){
+      paintStory(targetProgress);
+      paintedProgress = targetProgress;
+    }
+  }
+
+  function schedulePaint(){
+    if(!paintRaf) paintRaf = requestAnimationFrame(flushPaint);
+  }
+
+  function setTargetFrame(value){
+    var next = Math.max(0, Math.min(METHOD_CONFIG.frameCount - 1, Math.round(value)));
+    if(next === targetFrame) return;
+    targetFrame = next;
+    schedulePaint();
+  }
+
+  function scrollDistance(){
+    return Math.round(Math.max(stage.clientHeight, window.innerHeight) * METHOD_CONFIG.scrollScreens);
+  }
+
+  function initScrollSequence(){
+    var playhead = {frame:0};
+    section.classList.add('is-scroll-ready');
+
+    scrollTween = gsap.to(playhead, {
+      frame:METHOD_CONFIG.frameCount - 1,
+      ease:'none',
+      snap:{frame:1},
+      onUpdate:function(){ setTargetFrame(playhead.frame); },
+      scrollTrigger:{
+        trigger:section,
+        start:'top top',
+        end:function(){ return '+=' + scrollDistance(); },
+        pin:stage,
+        pinSpacing:false,
+        pinType:'transform',
+        scrub:METHOD_CONFIG.scrub,
+        anticipatePin:1,
+        invalidateOnRefresh:true,
+        onUpdate:function(self){
+          targetProgress = self.progress;
+          schedulePaint();
+        },
+        onToggle:function(self){ setMethodVisible(self.isActive); },
+        onRefresh:function(self){
+          targetProgress = self.progress;
+          layoutConnectors();
+          schedulePaint();
+        }
       }
     });
+
+    ScrollTrigger.refresh();
   }
 
-  function goBy(delta){
-    if(!mobileQuery.matches || !setHeight) return;
-    loopFix();
-    var current = closestPhysical();
-    animateToPhysical(current + delta);
-  }
-
-  function goToLogical(logical){
-    if(!mobileQuery.matches) return;
-    var forward = (logical - currentLogical + count) % count;
-    var delta = forward > count / 2 ? forward - count : forward;
-    if(delta) goBy(delta);
-  }
-
-  reel.addEventListener('scroll', function(){
-    scheduleFocus();
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(function(){
-      if(!controlled){ loopFix(); scheduleFocus(); }
-    }, 120);
-  }, {passive:true});
-
-  reel.addEventListener('pointerdown', function(){
-    if(!mobileQuery.matches) return;
-    gsap.killTweensOf(reel);
-    controlled = false;
-    reel.classList.remove('is-controlled');
-  }, {passive:true});
-
-  reel.addEventListener('keydown', function(event){
-    if(!mobileQuery.matches) return;
-    if(event.key === 'ArrowUp'){
-      event.preventDefault();
-      goBy(-1);
-    } else if(event.key === 'ArrowDown'){
-      event.preventDefault();
-      goBy(1);
-    } else if(event.key === 'Home'){
-      event.preventDefault();
-      goToLogical(0);
-    } else if(event.key === 'End'){
-      event.preventDefault();
-      goToLogical(count - 1);
-    }
-  });
-
-  reel.addEventListener('click', function(event){
-    if(!mobileQuery.matches) return;
-    var more = event.target.closest('.method-more');
-    var back = event.target.closest('.method-back');
-    var card = event.target.closest('.step');
-    if(!card || card.hasAttribute('data-method-clone') || !card.classList.contains('is-active')) return;
-
-    if(more){
-      card.classList.add('is-expanded');
-      more.setAttribute('aria-expanded', 'true');
-      card.querySelector('.step-front').setAttribute('aria-hidden', 'true');
-      card.querySelector('.step-detail').setAttribute('aria-hidden', 'false');
-      var backButton = card.querySelector('.method-back');
-      syncControls(card, true);
-      if(backButton) requestAnimationFrame(function(){ backButton.focus({preventScroll:true}); });
-    } else if(back){
-      collapse(card);
-      var moreButton = card.querySelector('.method-more');
-      if(moreButton) requestAnimationFrame(function(){ moreButton.focus({preventScroll:true}); });
-    }
-  });
-
-  if(previous) previous.addEventListener('click', function(){ goBy(-1); });
-  if(next) next.addEventListener('click', function(){ goBy(1); });
-  indexes.forEach(function(button){
-    button.addEventListener('click', function(){ goToLogical(parseInt(button.dataset.methodIndex, 10)); });
-  });
-
-  var visibility = new IntersectionObserver(function(entries){
-    entries.forEach(function(entry){
-      document.body.classList.toggle('method-carousel-active', mobileQuery.matches && entry.isIntersecting);
-    });
-  }, {rootMargin:'-12% 0px -12% 0px', threshold:0});
-  visibility.observe(section);
-
-  function initialise(){
-    syncAccessibility();
-    if(!mobileQuery.matches){
-      gsap.killTweensOf(reel);
-      controlled = false;
-      reel.classList.remove('is-controlled', 'is-jumping');
-      currentPhysical = -1;
-      currentLogical = -1;
-      reel.scrollTop = 0;
-      document.body.classList.remove('method-carousel-active');
+  function activateSequence(){
+    resizeCanvas(true);
+    targetFrame = 0;
+    drawnFrame = -1;
+    targetProgress = 0;
+    paintedProgress = -1;
+    flushPaint();
+    section.classList.add('is-ready', 'is-canvas-ready');
+    try {
+      initScrollSequence();
+    } catch(error) {
+      activateStatic('Animation indisponible : les cinq étapes restent affichées.');
       return;
     }
-    var sectionRect = section.getBoundingClientRect();
-    document.body.classList.toggle('method-carousel-active', sectionRect.bottom > window.innerHeight * .12 && sectionRect.top < window.innerHeight * .88);
-    measure();
-    reel.classList.add('is-jumping');
-    reel.scrollTop = targetFor(cards[count]);
-    requestAnimationFrame(function(){
-      reel.classList.remove('is-jumping');
-      updateFocus();
-    });
+
+    window.addEventListener('resize', queueResize, {passive:true});
+    window.addEventListener('orientationchange', forceResize, {passive:true});
+    if(typeof mobileLayout.addEventListener === 'function'){
+      mobileLayout.addEventListener('change', forceResize);
+    }
   }
 
-  window.addEventListener('resize', function(){
+  function resizeAfterDelay(force){
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function(){
-      if(!mobileQuery.matches){
-        initialise();
-        return;
+      var nextWidth = Math.round(stage.clientWidth || window.innerWidth);
+      var nextHeight = Math.round(stage.clientHeight || window.innerHeight);
+      /* Les barres d’URL mobiles ne doivent pas réallouer le canvas. */
+      if(
+        !force &&
+        mobileLayout.matches &&
+        nextWidth === lastStageWidth &&
+        Math.abs(nextHeight - lastStageHeight) < 110
+      ) return;
+
+      resizeCanvas(force);
+      if(scrollTween && scrollTween.scrollTrigger) ScrollTrigger.refresh();
+    }, METHOD_CONFIG.resizeDelay);
+  }
+
+  function queueResize(){ resizeAfterDelay(false); }
+  function forceResize(){ resizeAfterDelay(true); }
+
+  if(typeof reducedMotion.addEventListener === 'function'){
+    reducedMotion.addEventListener('change', function(event){
+      if(event.matches) activateStatic('Animation désactivée : les cinq étapes sont affichées.');
+    });
+  }
+
+  if('IntersectionObserver' in window){
+    preloadObserver = new IntersectionObserver(function(entries){
+      if(entries.some(function(entry){ return entry.isIntersecting; })) startPreload();
+    }, {rootMargin:METHOD_CONFIG.preloadMargin, threshold:0});
+    preloadObserver.observe(section);
+  } else {
+    var afterLoad = function(){
+      if('requestIdleCallback' in window){
+        requestIdleCallback(startPreload, {timeout:1600});
+      } else {
+        setTimeout(startPreload, 200);
       }
-      measure();
-      reel.classList.add('is-jumping');
-      reel.scrollTop = targetFor(cards[count + Math.max(0, currentLogical)]);
-      requestAnimationFrame(function(){
-        reel.classList.remove('is-jumping');
-        scheduleFocus();
-      });
-    }, 160);
-  });
-
-  if(typeof mobileQuery.addEventListener === 'function') mobileQuery.addEventListener('change', initialise);
-
-  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ requestAnimationFrame(initialise); });
-  else requestAnimationFrame(initialise);
+    };
+    if(document.readyState === 'complete') afterLoad();
+    else window.addEventListener('load', afterLoad, {once:true});
+  }
 })();
 
-/* ── Reveal au scroll (cascade) ── */
+/* ── Apparition unifiée : un seul mouvement court, sans filtre ni attente
+     liée aux effets décoratifs. La classe temporaire est retirée après
+     l'entrée afin que les hovers propres à chaque composant reprennent la
+     main sans conflit de transform. ── */
 (function(){
-  var mobile = window.matchMedia('(max-width:768px)').matches;
-  var BOOM = mobile ? 520 : 680; /* durée de vol des météorites (accélérée) */
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var compact = window.matchMedia('(max-width:768px), (pointer:coarse)').matches;
+  var targets = [];
+  var seen = new Set();
 
-  /* Les météorites de chaque section partent quand la section entre à l'écran */
-  var burstIO = new IntersectionObserver(function(entries){
-    entries.forEach(function(en){
-      if(en.isIntersecting){
-        en.target.classList.add('play');
-        en.target.dataset.t0 = performance.now();
-        burstIO.unobserve(en.target);
-      }
+  function add(target, index, extraDelay){
+    if(!target || seen.has(target)) return;
+    seen.add(target);
+
+    var explicit = parseInt(target.getAttribute('data-i'), 10);
+    var order = Number.isFinite(explicit) ? explicit : (index || 0);
+    var step = compact ? 30 : 42;
+    var cap = compact ? 105 : 170;
+    var delay = Math.min(order * step + (extraDelay || 0), cap);
+    target.style.setProperty('--reveal-delay', delay + 'ms');
+    target.classList.add('smooth-reveal');
+    targets.push(target);
+  }
+
+  document.querySelectorAll('.reveal').forEach(function(target){ add(target, 0, 0); });
+  document.querySelectorAll('.pole').forEach(function(target, index){ add(target, index, 0); });
+  document.querySelectorAll('.why .boom').forEach(function(target, index){ add(target, index, 0); });
+  document.querySelectorAll('.marquee').forEach(function(target){ add(target, 0, 0); });
+  document.querySelectorAll('.situations-header > *').forEach(function(target, index){ add(target, index, 0); });
+  document.querySelectorAll('.situations-carousel-wrapper').forEach(function(target){ add(target, 0, compact ? 60 : 84); });
+
+  function reveal(target){
+    target.classList.add('is-visible');
+    if(target.classList.contains('reveal')) target.classList.add('visible');
+
+    var cleaned = false;
+    function cleanup(){
+      if(cleaned) return;
+      cleaned = true;
+      target.classList.remove('smooth-reveal', 'is-visible');
+      target.style.removeProperty('--reveal-delay');
+    }
+    target.addEventListener('transitionend', function(event){
+      if(event.target === target && event.propertyName === 'transform') cleanup();
+    }, {once:true});
+    setTimeout(cleanup, compact ? 900 : 1050);
+  }
+
+  if(reduced || !('IntersectionObserver' in window)){
+    targets.forEach(function(target){
+      target.classList.add('visible');
+      target.classList.remove('smooth-reveal');
+      target.style.removeProperty('--reveal-delay');
     });
-  }, {threshold:.2});
-  document.querySelectorAll('section[data-burst]').forEach(function(s){ burstIO.observe(s); });
+    return;
+  }
 
-  /* Reveals : dans une section à météorites, les éléments n'apparaissent
-     qu'au moment des impacts, puis en cascade désynchronisée */
-  var els = document.querySelectorAll('.reveal');
+  document.documentElement.classList.add('motion-ready');
   var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(en){
-      if(en.isIntersecting){
-        var i = parseInt(en.target.getAttribute('data-i') || 0, 10);
-        var delay = i * 80;
-        var sec = en.target.closest('section[data-burst]');
-        if(sec){
-          var t0 = parseFloat(sec.dataset.t0 || 0);
-          var since = t0 ? (performance.now() - t0) : 0;
-          var wait = Math.max(0, BOOM - since); /* si l'impact a déjà eu lieu, pas d'attente */
-          delay = wait + i * 90;
-        }
-        en.target.style.transitionDelay = delay + 'ms';
-        en.target.classList.add('visible');
-        io.unobserve(en.target);
+    entries.forEach(function(entry){
+      if(entry.isIntersecting){
+        reveal(entry.target);
+        io.unobserve(entry.target);
       }
     });
-  }, {threshold:.15});
-  els.forEach(function(el){ io.observe(el); });
+  }, {threshold:.06, rootMargin:'0px 0px -8% 0px'});
+  targets.forEach(function(target){ io.observe(target); });
 })();
 
 /* ── Fond voyageant : la teinte est résolue au centre de l'écran.
@@ -937,42 +1096,23 @@ ScrollTrigger.config({ignoreMobileResize:true});
     }
     if(best) apply(best.getAttribute('data-tint'));
   }
-  var raf;
-  window.addEventListener('scroll', function(){
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(resolve);
-  }, {passive:true});
-  window.addEventListener('resize', resolve);
   resolve();
-})();
 
-/* ── Section 2 : météorite + explosion d'arrivée (une seule fois) ── */
-(function(){
-  var why = document.getElementById('pourquoi');
-  if(!why) return;
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(en){
-      if(en.isIntersecting){
-        why.classList.add('play');
-        io.unobserve(why);
-      }
-    });
-  }, {threshold:.35});
-  io.observe(why);
-})();
-
-/* ── Pôles : capsules qui arrivent au scroll + icône du ciel ── */
-(function(){
-  var poles = document.querySelectorAll('.pole');
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(en){
-      if(en.isIntersecting){
-        en.target.classList.add('in');
-        io.unobserve(en.target);
-      }
-    });
-  }, {threshold:.2, rootMargin:'0px 0px -8% 0px'});
-  poles.forEach(function(p){ io.observe(p); });
+  if('IntersectionObserver' in window){
+    var tintRaf = 0;
+    var observer = new IntersectionObserver(function(){
+      cancelAnimationFrame(tintRaf);
+      tintRaf = requestAnimationFrame(resolve);
+    }, {threshold:0, rootMargin:'-47% 0px -47% 0px'});
+    sections.forEach(function(section){ observer.observe(section); });
+  } else {
+    var raf = 0;
+    window.addEventListener('scroll', function(){
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(resolve);
+    }, {passive:true});
+    window.addEventListener('resize', resolve);
+  }
 })();
 
 /* ── Situations : carrousel infini façon Apple TV — le trackpad et le
@@ -987,6 +1127,16 @@ ScrollTrigger.config({ignoreMobileResize:true});
 
   var before = document.createDocumentFragment();
   var after = document.createDocumentFragment();
+
+  /* Le grain SVG ne change pas la lecture des visuels mais force un rendu
+     feTurbulence sur chacune des cartes originales. On le retire avant la
+     première peinture ; les copies périphériques abandonnent aussi leur
+     flou SVG, inutile hors du focus central. */
+  originals.forEach(function(card){
+    card.querySelectorAll('[filter*="grain"]').forEach(function(node){ node.removeAttribute('filter'); });
+    card.querySelectorAll('filter[id$="grain"]').forEach(function(node){ node.remove(); });
+  });
+
   function makeClone(card){
     var clone = card.cloneNode(true);
 
@@ -997,6 +1147,9 @@ ScrollTrigger.config({ignoreMobileResize:true});
     clone.setAttribute('aria-hidden', 'true');
     clone.setAttribute('inert', '');
     clone.setAttribute('data-carousel-clone', '');
+
+    clone.querySelectorAll('[filter]').forEach(function(node){ node.removeAttribute('filter'); });
+    clone.querySelectorAll('filter').forEach(function(node){ node.remove(); });
     return clone;
   }
   originals.forEach(function(card){
@@ -1270,6 +1423,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
   var glow = sec && sec.querySelector('.s-glow');
   if(!sec || !glow || window.matchMedia('(pointer:coarse)').matches) return;
   var tx = 0, ty = 0, gx = 0, gy = 0, running = false;
+
   sec.addEventListener('pointermove', function(e){
     var r = sec.getBoundingClientRect();
     tx = e.clientX - r.left; ty = e.clientY - r.top;
@@ -1277,7 +1431,8 @@ ScrollTrigger.config({ignoreMobileResize:true});
   });
   function follow(){
     gx += (tx - gx) * .12; gy += (ty - gy) * .12; /* traîne douce, comme une pression */
-    glow.style.left = gx + 'px'; glow.style.top = gy + 'px';
+    glow.style.setProperty('--sg-x', gx + 'px');
+    glow.style.setProperty('--sg-y', gy + 'px');
     if(Math.abs(tx - gx) > .5 || Math.abs(ty - gy) > .5){ requestAnimationFrame(follow); }
     else { running = false; }
   }
@@ -1321,6 +1476,8 @@ ScrollTrigger.config({ignoreMobileResize:true});
     trigger.removeAttribute('href');
     trigger.removeAttribute('target');
     trigger.removeAttribute('rel');
+    trigger.addEventListener('pointerenter', loadIclosed, {once:true, passive:true});
+    trigger.addEventListener('focus', loadIclosed, {once:true});
     trigger.addEventListener('click', function(){
       if(window.__icwReady) return;
       pendingTrigger = trigger;
@@ -1328,7 +1485,19 @@ ScrollTrigger.config({ignoreMobileResize:true});
     });
   });
 
-  loadIclosed();
+  /* Le widget injecte plusieurs iframes (paiement, captcha, calendrier).
+     Il n'est chargé qu'à l'approche du contact ou à l'intention explicite
+     d'ouvrir un CTA, afin qu'il ne concurrence jamais le récit au scroll. */
+  var contact = document.getElementById('contact');
+  if(contact && 'IntersectionObserver' in window){
+    var preload = new IntersectionObserver(function(entries){
+      if(entries.some(function(entry){ return entry.isIntersecting; })){
+        preload.disconnect();
+        loadIclosed();
+      }
+    }, {rootMargin:'800px 0px', threshold:0});
+    preload.observe(contact);
+  }
 })();
 
 /* ── Carrousel de marques : boucle infinie, focus central, surbrillance ── */
@@ -1561,7 +1730,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
         video.pause();
       }
     });
-  }, {threshold:.35});
+  }, {threshold:.15});
   io.observe(tv);
 
   /* Son activable / coupable à la main, sans quitter la page */

@@ -1,126 +1,153 @@
-<section data-burst id="methode" class="sun" data-tint="soleil">
-  <div class="burst" aria-hidden="true"><span class="b-comet" style="--bx:30%;--by:25%;--bd:0s;--c:var(--orange);--sx:-260px;--rot:-135deg"></span><span class="b-comet" style="--bx:75%;--by:45%;--bd:.22s;--c:var(--bleu)"></span></div>
-  <div class="wrap">
-    <div class="reveal" style="text-align:center">
-      <p class="eyebrow">Notre méthode</p>
-      <h2 class="sec" style="margin:0 auto">Les 5 clés de la Réussite.</h2>
+---
+/* CONFIG éditoriale : contenu et positions de la constellation desktop.
+   Les positions sont exprimées en pourcentage du viewport épinglé. */
+const steps = [
+  {
+    title: 'Comprendre',
+    description: "Analyse du projet, du marché, des objectifs et du niveau d'avancement.",
+    x: 14,
+    y: 74,
+    anchor: 'after',
+  },
+  {
+    title: 'Structurer',
+    description: "Clarification de l'offre, du positionnement, du message et de la stratégie.",
+    x: 33,
+    y: 60,
+    anchor: 'after',
+  },
+  {
+    title: 'Créer',
+    description: 'Identité, contenus, site, tunnel, outils ou supports nécessaires.',
+    x: 49,
+    y: 43,
+    anchor: 'after',
+  },
+  {
+    title: 'Déployer',
+    description: 'Mise en ligne, automatisations, acquisition, campagnes et suivi commercial.',
+    x: 66,
+    y: 31,
+    anchor: 'before',
+  },
+  {
+    title: 'Optimiser',
+    description: 'Analyse, ajustements, amélioration continue et accompagnement dans la durée.',
+    x: 82,
+    y: 16,
+    anchor: 'before',
+  },
+];
+---
+
+<!-- ══════════════ MÉTHODE — séquence 3D scrubée au scroll ══════════════ -->
+<section
+  id="methode"
+  class="method-cinematic is-enhanced is-static"
+  data-tint="cinema"
+  data-frame-root="/frames/method"
+  data-frame-count="181"
+  data-scroll-screens="5.8"
+  data-scrub="0.6"
+  aria-labelledby="method-cinematic-title"
+>
+  <h2 id="method-cinematic-title" class="method-visually-hidden">
+    Notre méthode — Les 5 clés de la réussite
+  </h2>
+
+  <div class="method-cinematic-stage" data-method-stage>
+    <!-- Poster 900 px / 2,8 Ko : aucun écran vide avant le préchargement. -->
+    <img
+      class="method-cinematic-poster"
+      data-method-poster
+      src="/frames/method/mobile/frame_0001.webp"
+      alt=""
+      width="900"
+      height="506"
+      loading="lazy"
+      decoding="async"
+      aria-hidden="true"
+    >
+    <canvas class="method-cinematic-canvas" data-method-canvas aria-hidden="true"></canvas>
+    <div class="method-cinematic-scrim" aria-hidden="true"></div>
+
+    <div
+      class="method-constellation"
+      data-method-constellation
+      role="list"
+      aria-label="Les cinq étapes de la méthode AWONE"
+    >
+      {steps.slice(0, -1).map(() => <span class="method-connector" data-method-connector aria-hidden="true"></span>)}
+
+      {steps.map((step, index) => (
+        <article
+          class:list={[
+            'method-node',
+            `method-node--${step.anchor}`,
+            index === 0 ? 'is-active' : 'is-future',
+          ]}
+          data-method-node
+          data-x={step.x}
+          data-y={step.y}
+          data-title={step.title}
+          style={`--node-x:${step.x}%;--node-y:${step.y}%;`}
+          role="listitem"
+          aria-current={index === 0 ? 'step' : undefined}
+        >
+          <span class="method-node-dot" aria-hidden="true"></span>
+          <div class="method-label">
+            <span class="method-label-num" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+            <h3>{step.title}</h3>
+            <p>{step.description}</p>
+          </div>
+        </article>
+      ))}
     </div>
 
-    <div class="method-reel-shell">
-      <p class="method-reel-hint">Glissez verticalement · boucle infinie</p>
-
-      <div
-        class="method-steps"
-        id="methodReel"
-        tabindex="0"
-        role="region"
-        aria-label="Les cinq étapes de la méthode AWONE"
-      >
-        <article class="step reveal" data-i="0" data-method-title="Comprendre" style="--c:var(--lavande)" role="group" aria-label="Étape 1 sur 5 : Comprendre">
-          <div class="step-front">
-            <div class="step-heading">
-              <div class="dot">1</div>
-              <div><span class="step-kicker">Étape 01</span><h3>Comprendre</h3></div>
-            </div>
-            <p>Analyse du projet, du marché, des objectifs et du niveau d'avancement.</p>
-            <button class="method-more" type="button" aria-expanded="false" aria-controls="method-detail-1">
-              <span>En savoir plus</span><i aria-hidden="true">↗</i>
-            </button>
-          </div>
-          <div class="step-detail" id="method-detail-1">
-            <span class="step-detail-kicker">Pourquoi cette étape</span>
-            <em class="gain">Pour éviter de construire sur une base floue.</em>
-            <button class="method-back" type="button"><span>Revenir à l'étape</span><i aria-hidden="true">↙</i></button>
-          </div>
-        </article>
-
-        <article class="step reveal" data-i="1" data-method-title="Structurer" style="--c:var(--jaune)" role="group" aria-label="Étape 2 sur 5 : Structurer">
-          <div class="step-front">
-            <div class="step-heading">
-              <div class="dot">2</div>
-              <div><span class="step-kicker">Étape 02</span><h3>Structurer</h3></div>
-            </div>
-            <p>Clarification de l'offre, du positionnement, du message et de la stratégie.</p>
-            <button class="method-more" type="button" aria-expanded="false" aria-controls="method-detail-2">
-              <span>En savoir plus</span><i aria-hidden="true">↗</i>
-            </button>
-          </div>
-          <div class="step-detail" id="method-detail-2">
-            <span class="step-detail-kicker">Pourquoi cette étape</span>
-            <em class="gain">Pour rendre l'offre compréhensible, vendable et cohérente.</em>
-            <button class="method-back" type="button"><span>Revenir à l'étape</span><i aria-hidden="true">↙</i></button>
-          </div>
-        </article>
-
-        <article class="step reveal" data-i="2" data-method-title="Créer" style="--c:var(--rose)" role="group" aria-label="Étape 3 sur 5 : Créer">
-          <div class="step-front">
-            <div class="step-heading">
-              <div class="dot">3</div>
-              <div><span class="step-kicker">Étape 03</span><h3>Créer</h3></div>
-            </div>
-            <p>Identité, contenus, site, tunnel, outils ou supports nécessaires.</p>
-            <button class="method-more" type="button" aria-expanded="false" aria-controls="method-detail-3">
-              <span>En savoir plus</span><i aria-hidden="true">↗</i>
-            </button>
-          </div>
-          <div class="step-detail" id="method-detail-3">
-            <span class="step-detail-kicker">Pourquoi cette étape</span>
-            <em class="gain">Pour créer les bons supports, pas seulement de beaux visuels.</em>
-            <button class="method-back" type="button"><span>Revenir à l'étape</span><i aria-hidden="true">↙</i></button>
-          </div>
-        </article>
-
-        <article class="step reveal" data-i="3" data-method-title="Déployer" style="--c:var(--bleu-clair)" role="group" aria-label="Étape 4 sur 5 : Déployer">
-          <div class="step-front">
-            <div class="step-heading">
-              <div class="dot">4</div>
-              <div><span class="step-kicker">Étape 04</span><h3>Déployer</h3></div>
-            </div>
-            <p>Mise en ligne, automatisations, acquisition, campagnes et suivi commercial.</p>
-            <button class="method-more" type="button" aria-expanded="false" aria-controls="method-detail-4">
-              <span>En savoir plus</span><i aria-hidden="true">↗</i>
-            </button>
-          </div>
-          <div class="step-detail" id="method-detail-4">
-            <span class="step-detail-kicker">Pourquoi cette étape</span>
-            <em class="gain">Pour connecter le site, le tunnel, les contenus et les outils.</em>
-            <button class="method-back" type="button"><span>Revenir à l'étape</span><i aria-hidden="true">↙</i></button>
-          </div>
-        </article>
-
-        <article class="step reveal" data-i="4" data-method-title="Optimiser" style="--c:var(--orange)" role="group" aria-label="Étape 5 sur 5 : Optimiser">
-          <div class="step-front">
-            <div class="step-heading">
-              <div class="dot">5</div>
-              <div><span class="step-kicker">Étape 05</span><h3>Optimiser</h3></div>
-            </div>
-            <p>Analyse, ajustements, amélioration continue et accompagnement dans la durée.</p>
-            <button class="method-more" type="button" aria-expanded="false" aria-controls="method-detail-5">
-              <span>En savoir plus</span><i aria-hidden="true">↗</i>
-            </button>
-          </div>
-          <div class="step-detail" id="method-detail-5">
-            <span class="step-detail-kicker">Pourquoi cette étape</span>
-            <em class="gain">Pour mesurer, ajuster et améliorer ce qui fonctionne.</em>
-            <button class="method-back" type="button"><span>Revenir à l'étape</span><i aria-hidden="true">↙</i></button>
-          </div>
-        </article>
-      </div>
-
-      <div class="method-reel-nav" aria-label="Navigation entre les étapes">
-        <button class="method-reel-arrow method-reel-prev" type="button" aria-label="Étape précédente">↑</button>
-        <div class="method-reel-indexes">
-          <button type="button" data-method-index="0" aria-label="Afficher l'étape 1">1</button>
-          <button type="button" data-method-index="1" aria-label="Afficher l'étape 2">2</button>
-          <button type="button" data-method-index="2" aria-label="Afficher l'étape 3">3</button>
-          <button type="button" data-method-index="3" aria-label="Afficher l'étape 4">4</button>
-          <button type="button" data-method-index="4" aria-label="Afficher l'étape 5">5</button>
-        </div>
-        <button class="method-reel-arrow method-reel-next" type="button" aria-label="Étape suivante">↓</button>
-      </div>
-      <p class="method-reel-status" aria-live="polite">Étape 1 sur 5 · Comprendre</p>
+    <div class="method-mobile-progress" data-method-progress aria-hidden="true">
+      {steps.map((_, index) => (
+        <i class={index === 0 ? 'is-active' : ''} data-method-progress-dot></i>
+      ))}
     </div>
 
-    <p class="method-punch reveal">Nous ne sautons aucune étape, parce que chaque étape prépare la suivante.</p>
+    <div class="method-loader" data-method-loader role="status" aria-label="Préparation de la séquence 3D">
+      <div class="method-loader-copy">
+        <span data-method-loader-label>Préparation de l’expérience</span>
+        <strong data-method-loader-value>0%</strong>
+      </div>
+      <span
+        class="method-loader-track"
+        data-method-loader-track
+        role="progressbar"
+        aria-label="Chargement des images de la méthode"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+      ><i></i></span>
+    </div>
+
+    <div class="method-veil method-veil--entry" data-method-entry-veil aria-hidden="true"></div>
+    <div class="method-veil method-veil--exit" data-method-exit-veil aria-hidden="true"></div>
+    <p class="method-scroll-hint" data-method-hint aria-hidden="true">Défiler pour construire</p>
+    <p class="method-visually-hidden" data-method-status aria-live="polite">Étape 1 sur 5 : Comprendre</p>
   </div>
 </section>
+
+<!-- Amélioration progressive : le HTML reste lisible si le bundle principal
+     ou GSAP échoue. L'état cinématique est armé avant le premier rendu, puis
+     automatiquement annulé à load si le moteur n'a pas pris le relais. -->
+<script is:inline>
+  (function(){
+    var section = document.getElementById('methode');
+    if(!section || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    section.classList.remove('is-static');
+    section.classList.add('is-booting');
+    addEventListener('load', function(){
+      requestAnimationFrame(function(){
+        if(section.classList.contains('is-runtime')) return;
+        section.classList.remove('is-booting');
+        section.classList.add('is-static');
+      });
+    }, {once:true});
+  })();
+</script>
