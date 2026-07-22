@@ -8,7 +8,7 @@ La section `#methode` remplace l’ancienne présentation « Les 5 clés ». Son
 - `data-frame-count` : nombre de frames, plafonné à 181 dans le moteur.
 - `data-scroll-screens` : longueur du scrub, actuellement `5.8` écrans.
 - `data-scrub` : amortissement ScrollTrigger, actuellement `0.6`.
-- `METHOD_CONFIG` : concurrence de préchargement, plafonds DPR/pixels, seuils de fondu, frame statique et debounce du resize.
+- `METHOD_CONFIG` : concurrence réseau et décodage, taille des caches, plafonds DPR/pixels, seuils de fondu, frame statique et debounce du resize.
 - tableau `steps` : textes, positions en pourcentage et côté d’ancrage des bulles.
 
 Les fichiers actuels sont servis depuis :
@@ -18,7 +18,9 @@ public/frames/method/desktop/frame_0001.webp … frame_0181.webp
 public/frames/method/mobile/frame_0001.webp  … frame_0181.webp
 ```
 
-Le poster initial est la première frame mobile, légère. Le lot complet ne part qu’à l’approche de la section (`IntersectionObserver`, marge de 1,5 écran), puis chaque image doit terminer `decode()` avant l’activation du scrub.
+Le poster initial est la première frame mobile, légère. Le lot complet ne part qu’à l’approche de la section (`IntersectionObserver`, marge de 1,5 écran). Les fichiers sont conservés sous forme de `Blob` compressés ; seule la première image doit être décodée avant l’activation du scrub, puis un cache borné garde les images proches de la position courante (12 desktop, 10 mobile). Les anciennes images décodées sont fermées et libérées.
+
+Avec `prefers-reduced-motion` ou le mode économie de données du navigateur, la section reste statique et ne demande qu’une seule frame. Le HTML des cinq étapes reste toujours lisible.
 
 ## Remplacer la séquence
 

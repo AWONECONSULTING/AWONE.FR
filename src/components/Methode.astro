@@ -139,7 +139,8 @@ const steps = [
 <script is:inline>
   (function(){
     var section = document.getElementById('methode');
-    if(!section || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var saveData = Boolean(navigator.connection && navigator.connection.saveData);
+    if(!section || saveData || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     section.classList.remove('is-static');
     section.classList.add('is-booting');
     addEventListener('load', function(){

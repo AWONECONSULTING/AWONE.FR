@@ -1,71 +1,82 @@
-# Audit de performance — Landing AWONE (build Astro)
-*Réalisé avant hébergement · build de production `astro build` v4.16*
+# Audit performance et stabilité — AWONE
 
-## 1. Poids mesurés (compression gzip niveau 9)
+Audit local de production réalisé le 22 juillet 2026 sur le build Astro 7.1.3, avec Lighthouse 13.4.1 et Google Chrome. Les mesures Lighthouse couvrent le premier écran ; les séquences et interactions ont aussi été parcourues jusqu’au footer dans des sessions Chrome séparées.
 
-| Ressource | Brut | Gzip | Chargement |
-|---|---|---|---|
-| index.html (minifié) | 46,9 K | **10,4 K** | critique |
-| CSS (minifié, 1 fichier) | 50,2 K | **11,1 K** | critique |
-| JS bundlé (GSAP inclus) | 123,1 K | **47,4 K** | différé (module) |
-| Logo nav/footer (webp) | 14 K | 14 K | préchargé |
-| Logo morph pleine résolution (png) | 39,6 K | 37,9 K | hero |
-| 16 icônes pôles (svg) | 116,5 K | 37,6 K | **lazy** (sous la ligne de flottaison) |
-| 3 portraits fondateurs (webp) | 143,2 K | 143,2 K | **lazy** |
-| **Première peinture (HTML+CSS+JS+logos)** | 274,7 K | **≈ 122 K** | |
-| **Site complet** | 534,4 K | **≈ 303 K** | |
+## Résultat
 
-Repères : la médiane web mondiale est ~2 400 K par page. Cette landing complète,
-avec toutes ses animations, pèse **8× moins que la médiane** ; le chemin critique
-gzippé (~122 K) se charge en < 1 s sur une 4G correcte.
+| Profil | Performance | Accessibilité | Bonnes pratiques | SEO | FCP | LCP | TBT | CLS | Transfert initial |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Mobile, 390 × 844 | **99** | **100** | **100** | **100** | 1,5 s | 1,7 s | 10 ms | 0 | 113 Kio |
+| Desktop, 1440 × 900 | **100** | **100** | **100** | **100** | 0,4 s | 0,4 s | 0 ms | 0 | 118 Kio |
 
-## 2. Ce que la migration Astro apporte concrètement
-- **HTML divisé par 12** (576 K monolithique → 47 K) : logos, portraits et icônes
-  sortis du HTML vers des fichiers **cachables** (2e visite quasi instantanée,
-  hash de version dans les noms `_astro/*` → cache long terme sans risque).
-- **CSS et JS minifiés** au build (esbuild), HTML compressé (`compressHTML`).
-- **GSAP intégré au bundle npm** (plus de CDN tiers) : les animations
-  fonctionnent **hors-ligne et en local**, latence tierce supprimée,
-  et plus de scénario "CDN lent = fallback statique".
-- **Chargement différé natif** : le JS est un module (non bloquant),
-  icônes et portraits en `loading="lazy"`.
-- Architecture en **15 composants** (`src/components/`) : chaque section
-  est isolée et modifiable sans risque pour les autres.
+Le chemin initial reste léger :
 
-## 3. Vérifications effectuées sur le build
-- ✅ Build de production sans erreur ni avertissement.
-- ✅ HTML du dist parsé valide ; **23/23 références locales existantes** (zéro 404 interne).
-- ✅ Bundle JS : présence vérifiée de toutes les mécaniques (morph hero, deux
-  carrousels roue libre, lueur curseur, résolveur de teintes bidirectionnel,
-  popup iClosed + intercepteur, sticky CTA, sections météorites).
-- ✅ CSS : tous les keyframes d'effets présents (météorites, comètes portraits,
-  capsules, icône du ciel, surbrillance marques, univers soleil).
-- ✅ Syntaxe JS validée (`node --check`) avant bundling.
-- ✅ Responsive : mêmes effets sur tous les écrans, variantes allégées ≤768px,
-  `prefers-reduced-motion` respecté partout.
+| Ressource critique | Brut | Gzip |
+|---|---:|---:|
+| HTML | 53,9 Ko | 11,9 Ko |
+| CSS total | 64,0 Ko | 13,8 Ko |
+| JS principal | 149,4 Ko | 54,7 Ko |
 
-## 4. ⚠️ Tester en local : OBLIGATOIREMENT via un serveur
-Le JS est un module ES : **ouvrir `dist/index.html` en double-clic (`file://`)
-ne charge PAS les scripts** (sécurité navigateur). Pour tester en local :
+Lenis est désormais séparé du bundle principal et chargé uniquement sur les appareils à pointeur précis. Le mobile évite ainsi ce code et le JS principal transféré baisse d’environ 7 %.
 
-    npm install        # une seule fois
-    npm run preview    # sert le build sur http://localhost:4321
+## Correctifs appliqués
 
-(ou `npx serve dist`). Le popup iClosed et les polices Fontshare nécessitent
-de toute façon une connexion ; iClosed refuse `file://` (voir échange précédent).
+### Pic mémoire de la séquence « Méthode »
 
-## 5. Reste à faire côté hébergement (recommandations)
-1. **Activer gzip/brotli** sur le serveur (Apache/Nginx/o2switch : souvent déjà actif).
-   Brotli ferait encore ~-15% sur HTML/CSS/JS.
-2. **Cache long** sur `/_astro/*`, `/assets/*`, `/icons/*` (immutable, 1 an).
-3. Vérifier la lecture Cloudflare Stream de la section vidéo après chaque changement de lecteur.
-4. Lancer **PageSpeed Insights** une fois en ligne (l'audit Lighthouse complet
-   nécessite Chrome, indisponible dans cet environnement de build — les mesures
-   ci-dessus sont des poids réels, pas des estimations).
-5. Si score LCP à optimiser après mise en ligne : le candidat LCP est le titre
-   du hero (texte → excellent) ; vérifier que Fontshare répond vite, sinon
-   auto-héberger les 2 polices (je peux le faire).
+Le moteur conservait auparavant les 181 frames entièrement décodées avant d’activer l’animation. En RGBA, cela représentait théoriquement environ **805 Mio en desktop** et **314 Mio en mobile**, hors canvas et surcoût navigateur.
 
-## 6. Déploiement
-Uploadez **le contenu du dossier `dist/`** à la racine de votre hébergement.
-Pour modifier le site : éditez `src/`, puis `npm run build` régénère `dist/`.
+Le nouveau moteur :
+
+- précharge les mêmes fichiers WebP sous forme compressée ;
+- décode uniquement la frame demandée et ses voisines ;
+- borne le cache à 12 images desktop et 10 images mobile ;
+- libère les `ImageBitmap` éloignées ;
+- conserve les 181 frames, la résolution du canvas, le timing GSAP et les étapes visuelles existantes.
+
+Le plafond théorique de pixels décodés passe ainsi à environ **53 Mio desktop** et **17 Mio mobile**, soit une réduction supérieure à 93 %. Les contrôles automatisés ont retrouvé exactement les frames 1, 46, 91, 136 et 181 aux positions attendues sur desktop, ainsi que 1, 37, 73, 109, 145 et 181 sur mobile.
+
+### Économie de données et mouvement réduit
+
+La séquence « Méthode » respecte maintenant `navigator.connection.saveData`, comme la séquence immersive. En mode économie de données ou `prefers-reduced-motion`, chaque séquence reste lisible en version statique et ne charge qu’une image.
+
+### Robustesse fonctionnelle
+
+- Les CTA de réservation sont de vrais liens de secours. Le popup reste inchangé quand JavaScript et iClosed fonctionnent ; sans JavaScript ou si le widget échoue, la page de réservation reste accessible.
+- Les identifiants des dégradés SVG sont maintenant uniques dans les clones du carrousel « Situations », sans modification de leurs couleurs ni de leur rendu.
+
+### Dépendances
+
+- Astro mis à jour de 7.0.7 à **7.1.3**.
+- SVGO mis à jour à **4.0.2**.
+- `npm audit --omit=dev` : **0 vulnérabilité**.
+
+## Poids des séquences
+
+Le dossier de production complet pèse **46,31 Mio**, principalement parce qu’il contient les variantes mobile et desktop. Un navigateur ne demande que la variante adaptée et seulement à l’approche de la section.
+
+| Séquence | Desktop | Mobile |
+|---|---:|---:|
+| Immersive | 181 frames · 11,65 Mio | 91 frames · 2,66 Mio |
+| Méthode | 181 frames · 18,21 Mio | 181 frames · 11,93 Mio |
+| Total parcouru | **29,86 Mio** | **14,59 Mio** |
+
+Ces fichiers ne font pas partie du chargement initial de 113–118 Kio. Ils doivent néanmoins être servis avec un cache long et, idéalement, depuis un CDN proche des visiteurs.
+
+## Vérifications fonctionnelles
+
+- Build de production et syntaxe JS validés.
+- 641 images raster décodées sans erreur ; dimensions et numérotation des 634 frames validées.
+- Toutes les références locales du HTML existent dans `dist/`.
+- Aucun échec réseau local, erreur console ou exception pendant les parcours mobile et desktop.
+- Menu mobile, fermeture par Échap, carrousels clavier/souris, bouton son, lecture Cloudflare, CTA iClosed, année dynamique et états de scroll vérifiés.
+- Les feuilles Fontshare, le widget iClosed, les manifestes HLS/DASH et le lien Instagram répondaient en HTTP 200 pendant l’audit.
+- Canonical, sitemap et robots pointent vers `https://awone.fr/`.
+
+## Points à surveiller au déploiement
+
+1. Activer Brotli ou gzip pour HTML, CSS et JS.
+2. Servir `/_astro/`, `/assets/`, `/icons/` et `/frames/` avec un cache immuable versionné. Invalider l’URL du dossier de frames lors d’un nouvel export.
+3. Placer les frames sur un CDN si l’audience est géographiquement distribuée.
+4. Refaire PageSpeed Insights sur l’URL publique : latence serveur, CDN et cache réel ne peuvent pas être mesurés fidèlement sur localhost.
+5. Le build signale deux gros chunks différés : HLS (510 Ko) et DASH (819 Ko). Ils servent uniquement de lecteurs vidéo de secours et ne sont pas téléchargés au premier écran ; les supprimer réduirait la robustesse multi-navigateur.
+6. Lighthouse estime encore environ 21 Kio d’images redimensionnables et 23 Kio de JS initial inutilisé. Le gain est faible face aux scores actuels ; toute optimisation supplémentaire des polices ou animations doit être validée visuellement pour éviter un changement de typographie ou de mouvement.

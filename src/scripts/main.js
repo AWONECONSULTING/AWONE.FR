@@ -1,7 +1,6 @@
 /* ── Animations GSAP (bundle local : fonctionne aussi hors-ligne) ── */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -15,23 +14,31 @@ ScrollTrigger.config({ignoreMobileResize:true});
   var precisePointer = window.matchMedia('(hover:hover) and (pointer:fine)').matches;
   if(reduced || !precisePointer) return;
 
-  var lenis = new Lenis({
-    lerp:.09,
-    smoothWheel:true,
-    syncTouch:false,
-    wheelMultiplier:.95,
-    anchors:{offset:-72},
-    stopInertiaOnNavigate:true,
-    prevent:function(node){
-      if(!(node instanceof Element)) return false;
-      return Boolean(node.closest('.brands-track,.situations-carousel'));
-    }
-  });
+  /* Le scroll inertiel n'entre pas dans le bundle mobile : il est récupéré
+     uniquement sur les appareils de bureau qui peuvent réellement l'utiliser. */
+  import('lenis').then(function(module){
+    var Lenis = module.default || module.Lenis;
+    if(!Lenis) return;
+    var lenis = new Lenis({
+      lerp:.09,
+      smoothWheel:true,
+      syncTouch:false,
+      wheelMultiplier:.95,
+      anchors:{offset:-72},
+      stopInertiaOnNavigate:true,
+      prevent:function(node){
+        if(!(node instanceof Element)) return false;
+        return Boolean(node.closest('.brands-track,.situations-carousel'));
+      }
+    });
 
-  lenis.on('scroll', ScrollTrigger.update);
-  gsap.ticker.add(function(time){ lenis.raf(time * 1000); });
-  gsap.ticker.lagSmoothing(500, 33);
-  window.__awoneLenis = lenis;
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add(function(time){ lenis.raf(time * 1000); });
+    gsap.ticker.lagSmoothing(500, 33);
+    window.__awoneLenis = lenis;
+  }).catch(function(){
+    /* Le scroll natif reste le fallback fonctionnel si le chunk est indisponible. */
+  });
 })();
 
 /* Les animations décoratives continues sont mises en pause uniquement
@@ -523,8 +530,10 @@ ScrollTrigger.config({ignoreMobileResize:true});
   }
 })();
 
-/* ── Méthode immersive : 181 images décodées avant activation, puis un
-     rendu canvas cadencé indépendamment des événements de scroll. ── */
+/* ── Méthode immersive : les 181 fichiers sont préchargés sous forme
+     compressée, puis seules les images proches du scroll sont décodées.
+     Le rendu conserve toutes les frames sans garder plusieurs centaines
+     de mégaoctets de pixels en mémoire. ── */
 (function(){
   var section = document.getElementById('methode');
   if(!section) return;
@@ -552,6 +561,10 @@ ScrollTrigger.config({ignoreMobileResize:true});
     preloadMargin:'150% 0px',
     desktopConcurrency:6,
     mobileConcurrency:4,
+    desktopDecodeConcurrency:3,
+    mobileDecodeConcurrency:2,
+    desktopCacheLimit:12,
+    mobileCacheLimit:10,
     maxDpr:2,
     mobileDpr:1.5,
     desktopPixelBudget:3200000,
@@ -564,6 +577,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
   });
 
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var saveData = Boolean(navigator.connection && navigator.connection.saveData);
   var mobileLayout = window.matchMedia(
     '(max-width:' + METHOD_CONFIG.mobileBreakpoint + 'px), ' +
     '(max-width:932px) and (max-height:560px) and (pointer:coarse)'
@@ -572,9 +586,22 @@ ScrollTrigger.config({ignoreMobileResize:true});
      d'une rotation. Les téléphones en paysage gardent le lot 900 px. */
   var useMobileFrames = mobileLayout.matches;
   var frameDirectory = useMobileFrames ? 'mobile' : 'desktop';
-  var frames = new Array(METHOD_CONFIG.frameCount);
-  var decodedCount = 0;
+  var blobs = new Array(METHOD_CONFIG.frameCount);
+  var fetches = new Array(METHOD_CONFIG.frameCount);
+  var decoded = new Map();
+  var decodePromises = new Map();
+  var decodeQueue = [];
+  var loadedCount = 0;
+  var activeDecodes = 0;
+  var decodeLimit = useMobileFrames
+    ? METHOD_CONFIG.mobileDecodeConcurrency
+    : METHOD_CONFIG.desktopDecodeConcurrency;
+  var cacheLimit = useMobileFrames
+    ? METHOD_CONFIG.mobileCacheLimit
+    : METHOD_CONFIG.desktopCacheLimit;
   var preloadStarted = false;
+  var sequenceActive = false;
+  var disabled = false;
   var preloadObserver = null;
   var visibilityObserver = null;
   var scrollTween = null;
@@ -584,6 +611,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
   var activeStep = -1;
   var targetFrame = 0;
   var drawnFrame = -1;
+  var direction = 1;
   var targetProgress = 0;
   var paintedProgress = -1;
   var lastStageWidth = 0;
@@ -603,6 +631,8 @@ ScrollTrigger.config({ignoreMobileResize:true});
   }
 
   function activateStatic(message){
+    disabled = true;
+    sequenceActive = false;
     if(preloadObserver) preloadObserver.disconnect();
     if(visibilityObserver) visibilityObserver.disconnect();
     if(scrollTween){
@@ -612,6 +642,19 @@ ScrollTrigger.config({ignoreMobileResize:true});
     }
     if(paintRaf) cancelAnimationFrame(paintRaf);
     if(loaderRaf) cancelAnimationFrame(loaderRaf);
+    window.removeEventListener('resize', queueResize);
+    window.removeEventListener('orientationchange', forceResize);
+    if(typeof mobileLayout.removeEventListener === 'function'){
+      mobileLayout.removeEventListener('change', forceResize);
+    }
+    decodeQueue.splice(0).forEach(function(job){ job.resolve(null); });
+    decodePromises.clear();
+    decoded.forEach(closeDrawable);
+    decoded.clear();
+    for(var frameIndex = 0; frameIndex < METHOD_CONFIG.frameCount; frameIndex++){
+      blobs[frameIndex] = null;
+      fetches[frameIndex] = null;
+    }
     section.classList.remove('is-booting', 'is-runtime', 'is-ready', 'is-canvas-ready', 'is-scroll-ready', 'has-started');
     section.classList.add('is-static');
     setMethodVisible(false);
@@ -621,6 +664,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
 
   if(
     reducedMotion.matches ||
+    saveData ||
     !stage ||
     !canvas ||
     nodes.length !== 5 ||
@@ -629,6 +673,8 @@ ScrollTrigger.config({ignoreMobileResize:true});
     activateStatic(
       reducedMotion.matches
         ? 'Animation désactivée : les cinq étapes sont affichées.'
+        : saveData
+          ? 'Image fixe : le mode économie de données est activé.'
         : 'Séquence indisponible : les cinq étapes sont affichées.'
     );
     return;
@@ -657,7 +703,7 @@ ScrollTrigger.config({ignoreMobileResize:true});
 
   function updateLoader(){
     loaderRaf = 0;
-    var ratio = decodedCount / METHOD_CONFIG.frameCount;
+    var ratio = loadedCount / METHOD_CONFIG.frameCount;
     var percent = Math.round(ratio * 100);
     if(loaderValue) loaderValue.textContent = percent + '%';
     if(loaderBar) loaderBar.style.transform = 'scaleX(' + ratio.toFixed(4) + ')';
@@ -668,41 +714,124 @@ ScrollTrigger.config({ignoreMobileResize:true});
     if(!loaderRaf) loaderRaf = requestAnimationFrame(updateLoader);
   }
 
-  function loadImage(index){
+  function fetchFrame(index){
+    if(blobs[index]) return Promise.resolve(blobs[index]);
+    if(fetches[index]) return fetches[index];
+
+    function request(attempt){
+      return fetch(frameUrl(index), {cache:'force-cache'})
+        .then(function(response){
+          if(!response.ok) throw new Error('Frame ' + (index + 1) + ' indisponible');
+          return response.blob();
+        })
+        .catch(function(error){
+          if(attempt < 1) return request(attempt + 1);
+          throw error;
+        });
+    }
+
+    fetches[index] = request(0).then(function(blob){
+      if(disabled) return blob;
+      blobs[index] = blob;
+      loadedCount += 1;
+      scheduleLoaderUpdate();
+      return blob;
+    });
+    return fetches[index];
+  }
+
+  function drawableFromBlob(blob){
+    if('createImageBitmap' in window) return createImageBitmap(blob);
     return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(blob);
       var image = new Image();
       image.decoding = 'async';
-      image.loading = 'eager';
-      image.onload = function(){
-        image.onload = null;
-        image.onerror = null;
-        if(!image.naturalWidth){
-          reject(new Error('Frame vide : ' + frameUrl(index)));
-          return;
-        }
-        if(typeof image.decode === 'function'){
-          image.decode().then(function(){ resolve(image); }).catch(reject);
-        } else {
-          resolve(image);
-        }
-      };
-      image.onerror = function(){
-        image.onload = null;
-        image.onerror = null;
-        reject(new Error('Frame introuvable : ' + frameUrl(index)));
-      };
-      image.src = frameUrl(index);
+      image.onload = function(){ URL.revokeObjectURL(url); resolve(image); };
+      image.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('Décodage impossible')); };
+      image.src = url;
     });
   }
 
-  function decodeFrame(index, attempt){
-    return loadImage(index).then(function(image){
-      frames[index] = image;
-      decodedCount += 1;
-      scheduleLoaderUpdate();
-    }).catch(function(error){
-      if(attempt < 1) return decodeFrame(index, attempt + 1);
-      throw error;
+  function closeDrawable(drawable){
+    if(drawable && typeof drawable.close === 'function') drawable.close();
+  }
+
+  function trimDecoded(){
+    while(decoded.size > cacheLimit){
+      var victim = -1;
+      var farthest = -1;
+      decoded.forEach(function(drawable, index){
+        var distance = Math.abs(index - targetFrame);
+        if(index !== drawnFrame && index !== targetFrame && distance > farthest){
+          victim = index;
+          farthest = distance;
+        }
+      });
+      if(victim < 0) break;
+      closeDrawable(decoded.get(victim));
+      decoded.delete(victim);
+    }
+  }
+
+  function storeDrawable(index, drawable){
+    if(!drawable) return;
+    if(disabled){ closeDrawable(drawable); return; }
+    if(decoded.has(index)) closeDrawable(decoded.get(index));
+    decoded.set(index, drawable);
+    trimDecoded();
+    schedulePaint();
+  }
+
+  function pumpDecodeQueue(){
+    while(!disabled && activeDecodes < decodeLimit && decodeQueue.length){
+      (function(job){
+        activeDecodes += 1;
+        fetchFrame(job.index)
+          .then(drawableFromBlob)
+          .then(function(drawable){
+            storeDrawable(job.index, drawable);
+            job.resolve(drawable);
+          })
+          .catch(function(){ job.resolve(null); })
+          .finally(function(){
+            activeDecodes -= 1;
+            decodePromises.delete(job.index);
+            pumpDecodeQueue();
+          });
+      })(decodeQueue.shift());
+    }
+  }
+
+  function queueDecode(index, priority){
+    index = Math.max(0, Math.min(METHOD_CONFIG.frameCount - 1, Math.round(index)));
+    if(decoded.has(index)) return Promise.resolve(decoded.get(index));
+    if(decodePromises.has(index)){
+      if(priority){
+        var queuedIndex = decodeQueue.findIndex(function(job){ return job.index === index; });
+        if(queuedIndex > 0) decodeQueue.unshift(decodeQueue.splice(queuedIndex, 1)[0]);
+      }
+      return decodePromises.get(index);
+    }
+
+    var resolveJob;
+    var promise = new Promise(function(resolve){ resolveJob = resolve; });
+    decodePromises.set(index, promise);
+    var job = {index:index, resolve:resolveJob};
+    if(priority) decodeQueue.unshift(job); else decodeQueue.push(job);
+    pumpDecodeQueue();
+    return promise;
+  }
+
+  function decodeAround(index){
+    queueDecode(index, true);
+    var offsets = direction >= 0
+      ? [1,2,3,4,5,6,-1,-2,-3]
+      : [-1,-2,-3,-4,-5,-6,1,2,3];
+    offsets.forEach(function(offset){
+      var neighbour = index + offset;
+      if(neighbour >= 0 && neighbour < METHOD_CONFIG.frameCount){
+        queueDecode(neighbour, false);
+      }
     });
   }
 
@@ -739,24 +868,32 @@ ScrollTrigger.config({ignoreMobileResize:true});
       : METHOD_CONFIG.desktopConcurrency;
 
     function worker(){
-      if(cursor >= queue.length) return Promise.resolve();
+      if(disabled || cursor >= queue.length) return Promise.resolve();
       var index = queue[cursor++];
-      return decodeFrame(index, 0)
+      return fetchFrame(index)
         .catch(function(error){ failures.push(error); })
-        .then(worker);
+        .then(function(){ if(!disabled) return worker(); });
     }
 
     var workers = [];
     for(var i = 0; i < concurrency; i++) workers.push(worker());
 
     Promise.all(workers).then(function(){
+      if(disabled) return;
       updateLoader();
-      if(failures.length || decodedCount !== METHOD_CONFIG.frameCount){
+      if(failures.length || loadedCount !== METHOD_CONFIG.frameCount){
         activateStatic('La séquence 3D n’a pas pu être chargée. Les cinq étapes restent disponibles.');
         return;
       }
-      /* Le 100 % est peint avant la disparition du loader. */
-      requestAnimationFrame(function(){ requestAnimationFrame(activateSequence); });
+      /* Le 100 % est peint avant la disparition du loader. Une seule frame
+         doit être décodée pour démarrer ; les voisines suivent en tâche de fond. */
+      queueDecode(0, true).then(function(drawable){
+        if(!drawable){
+          activateStatic('La séquence 3D n’a pas pu être décodée. Les cinq étapes restent disponibles.');
+          return;
+        }
+        requestAnimationFrame(function(){ requestAnimationFrame(activateSequence); });
+      });
     });
   }
 
@@ -807,16 +944,19 @@ ScrollTrigger.config({ignoreMobileResize:true});
   }
 
   function drawFrame(index){
-    var image = frames[index];
-    if(!image || !image.naturalWidth) return false;
+    var image = decoded.get(index);
+    if(!image) return false;
+    var sourceWidth = image.naturalWidth || image.width;
+    var sourceHeight = image.naturalHeight || image.height;
+    if(!sourceWidth || !sourceHeight) return false;
     var canvasWidth = canvas.width;
     var canvasHeight = canvas.height;
     var scale = Math.max(
-      canvasWidth / image.naturalWidth,
-      canvasHeight / image.naturalHeight
+      canvasWidth / sourceWidth,
+      canvasHeight / sourceHeight
     );
-    var width = image.naturalWidth * scale;
-    var height = image.naturalHeight * scale;
+    var width = sourceWidth * scale;
+    var height = sourceHeight * scale;
     context.fillStyle = '#0A0A0A';
     context.fillRect(0, 0, canvasWidth, canvasHeight);
     context.drawImage(
@@ -826,7 +966,22 @@ ScrollTrigger.config({ignoreMobileResize:true});
       width,
       height
     );
+    canvas.dataset.frame = String(index + 1);
     return true;
+  }
+
+  function nearestDecoded(){
+    if(decoded.has(targetFrame)) return targetFrame;
+    var nearest = -1;
+    var distance = Infinity;
+    decoded.forEach(function(drawable, index){
+      var delta = Math.abs(index - targetFrame);
+      if(delta < distance){
+        nearest = index;
+        distance = delta;
+      }
+    });
+    return nearest;
   }
 
   function setStep(index){
@@ -874,7 +1029,10 @@ ScrollTrigger.config({ignoreMobileResize:true});
 
   function flushPaint(){
     paintRaf = 0;
-    if(drawnFrame !== targetFrame && drawFrame(targetFrame)) drawnFrame = targetFrame;
+    var availableFrame = nearestDecoded();
+    if(availableFrame >= 0 && drawnFrame !== availableFrame && drawFrame(availableFrame)){
+      drawnFrame = availableFrame;
+    }
     if(paintedProgress !== targetProgress){
       paintStory(targetProgress);
       paintedProgress = targetProgress;
@@ -887,8 +1045,9 @@ ScrollTrigger.config({ignoreMobileResize:true});
 
   function setTargetFrame(value){
     var next = Math.max(0, Math.min(METHOD_CONFIG.frameCount - 1, Math.round(value)));
-    if(next === targetFrame) return;
+    if(next !== targetFrame) direction = next > targetFrame ? 1 : -1;
     targetFrame = next;
+    if(sequenceActive) decodeAround(next);
     schedulePaint();
   }
 
@@ -932,11 +1091,14 @@ ScrollTrigger.config({ignoreMobileResize:true});
   }
 
   function activateSequence(){
+    if(disabled) return;
+    sequenceActive = true;
     resizeCanvas(true);
     targetFrame = 0;
     drawnFrame = -1;
     targetProgress = 0;
     paintedProgress = -1;
+    decodeAround(0);
     flushPaint();
     section.classList.add('is-ready', 'is-canvas-ready');
     try {
@@ -1137,6 +1299,32 @@ ScrollTrigger.config({ignoreMobileResize:true});
     card.querySelectorAll('filter[id$="grain"]').forEach(function(node){ node.remove(); });
   });
 
+  var cloneSerial = 0;
+  function namespaceCloneIds(clone){
+    var suffix = '-carousel-clone-' + (++cloneSerial);
+    var replacements = {};
+    clone.querySelectorAll('[id]').forEach(function(node){
+      var previous = node.id;
+      var unique = previous + suffix;
+      replacements[previous] = unique;
+      node.id = unique;
+    });
+
+    var ids = Object.keys(replacements);
+    if(!ids.length) return;
+    clone.querySelectorAll('*').forEach(function(node){
+      Array.prototype.slice.call(node.attributes).forEach(function(attribute){
+        var value = attribute.value;
+        var next = value;
+        ids.forEach(function(previous){
+          next = next.split('url(#' + previous + ')').join('url(#' + replacements[previous] + ')');
+          if(next === '#' + previous) next = '#' + replacements[previous];
+        });
+        if(next !== value) node.setAttribute(attribute.name, next);
+      });
+    });
+  }
+
   function makeClone(card){
     var clone = card.cloneNode(true);
 
@@ -1150,6 +1338,9 @@ ScrollTrigger.config({ignoreMobileResize:true});
 
     clone.querySelectorAll('[filter]').forEach(function(node){ node.removeAttribute('filter'); });
     clone.querySelectorAll('filter').forEach(function(node){ node.remove(); });
+    /* Les SVG clonés conservent le même rendu tout en évitant les identifiants
+       dupliqués, qui peuvent résoudre vers le mauvais dégradé selon le moteur. */
+    namespaceCloneIds(clone);
     return clone;
   }
   originals.forEach(function(card){
@@ -1448,11 +1639,12 @@ ScrollTrigger.config({ignoreMobileResize:true});
 /* ── CTA iClosed : popup uniquement, sans quitter la landing page ── */
 (function(){
   var loading = false;
+  var unavailable = false;
   var pendingTrigger = null;
 
   function loadIclosed(){
     if(window.__icwReady) return;
-    if(loading) return;
+    if(loading || unavailable) return;
     loading = true;
     var s = document.createElement('script');
     s.src = 'https://app.iclosed.io/assets/widget.js';
@@ -1467,18 +1659,24 @@ ScrollTrigger.config({ignoreMobileResize:true});
     };
     s.onerror = function(){
       loading = false;
-      pendingTrigger = null;
+      unavailable = true;
+      if(pendingTrigger){
+        var fallback = pendingTrigger.getAttribute('href') || pendingTrigger.dataset.iclosedLink;
+        pendingTrigger = null;
+        if(fallback) window.location.assign(fallback);
+      }
     };
     document.head.appendChild(s);
   }
 
   document.querySelectorAll('[data-iclosed-link][data-embed-type="popup"]').forEach(function(trigger){
-    trigger.removeAttribute('href');
-    trigger.removeAttribute('target');
-    trigger.removeAttribute('rel');
     trigger.addEventListener('pointerenter', loadIclosed, {once:true, passive:true});
     trigger.addEventListener('focus', loadIclosed, {once:true});
-    trigger.addEventListener('click', function(){
+    trigger.addEventListener('click', function(event){
+      /* Avec JS, le widget garde l'utilisateur sur la page. Sans JS ou si le
+         fournisseur est indisponible, le href reste un vrai lien de secours. */
+      if(unavailable) return;
+      event.preventDefault();
       if(window.__icwReady) return;
       pendingTrigger = trigger;
       loadIclosed();
