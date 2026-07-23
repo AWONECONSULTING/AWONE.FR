@@ -1,5 +1,13 @@
 # Audit performance et stabilité — AWONE
 
+> **Statut : référence historique avant le correctif des pins.** Les passages
+> indiquant que les contrôleurs 3D sont différés ou que toutes les frames sont
+> décodées avant activation sont remplacés par
+> [`AUDIT-SCROLL-PINS-POST-CORRECTION.md`](./AUDIT-SCROLL-PINS-POST-CORRECTION.md).
+> Mesure finale actuelle : Lighthouse mobile 98/100, 175 Kio, TBT 0 ms ;
+> desktop 100/100, 210,3 Kio, TBT 0 ms. Les contrôleurs sont immédiats pour
+> installer les pins, tandis que posters et frames restent différés.
+
 Audit local de production réalisé le 22 juillet 2026 sur le build Astro 7.1.3, avec Lighthouse 13.4.1 et Google Chrome. Les mesures Lighthouse couvrent le premier écran ; les séquences et interactions ont aussi été parcourues jusqu’au footer dans des sessions Chrome séparées.
 
 ## Résultat

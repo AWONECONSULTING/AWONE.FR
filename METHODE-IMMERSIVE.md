@@ -1,12 +1,16 @@
 # Séquences immersives — maintenance
 
-Les deux récits canvas sont isolés dans des modules différés :
+Les deux récits canvas sont isolés dans des contrôleurs chargés dès le bundle
+principal afin que leurs pins existent avant tout geste :
 
 - `src/scripts/immersive-sequence.js` pour « On élève votre marque » ;
 - `src/scripts/method-sequence.js` pour « Les 5 clés » ;
 - `src/scripts/frame-sequence.js` pour le chargement, le cache décodé et l’arbitrage mémoire partagé.
 
-Le HTML éditorial reste dans `src/components/ImmersiveSequence.astro` et `src/components/Methode.astro`. Le rendu responsive est dans `src/styles/global.css`.
+Le HTML éditorial reste dans `src/components/ImmersiveSequence.astro` et
+`src/components/Methode.astro`. Le rendu responsive est dans
+`src/styles/global.css`. Les contrôleurs sont immédiats, mais les posters,
+logos de sortie et lots de frames restent différés jusqu'à l'approche.
 
 ## Réglages exposés
 
@@ -41,16 +45,29 @@ Poids complet demandé par un navigateur mobile :
 | Ascension | 2,04 Mio | 2,66 Mio |
 | Méthode | 2,28 Mio | 3,70 Mio |
 
-Chaque section dispose aussi d’un poster basse définition de 8 à 19 Kio. Son URL est conservée dans `data-poster-src` / `data-poster-srcset` et n’est injectée que lorsque le module approche : aucune frame ni aucun poster sous la ligne de flottaison ne part au démarrage de la page.
+Chaque section dispose aussi d’un poster basse définition de 8 à 19 Kio. Son
+URL est conservée dans `data-poster-src` / `data-poster-srcset` et n’est
+injectée que lorsque l’observateur de cycle réclame la séquence : aucune frame,
+aucun poster ni logo de sortie sous la ligne de flottaison ne part au démarrage
+de la page.
 
 ## Cycle mémoire
 
-1. Le module est importé plusieurs écrans avant la section.
-2. L’`IntersectionObserver` interne réclame le bail mémoire à environ 1,5 écran.
-3. L’arbitre tient compte du sens de lecture lorsque les deux marges de préchargement se chevauchent, puis libère l’autre séquence avant toute nouvelle allocation.
-4. Toutes les frames du lot choisi sont téléchargées et passent par `img.decode()` avant l’activation du scrub.
-5. Les blobs compressés restent disponibles, mais seul un voisinage décodé borné suit la frame cible. Conserver les 181 surfaces RGBA de l’ascension dépasserait 1 Gio et reproduirait la purge iOS que le correctif doit éviter.
-6. Lorsque la section s’éloigne, requêtes, blobs, URLs objet et images sont supprimés ; le canvas est effacé puis réduit à 1 × 1. Le poster reste visible.
+1. Le contrôleur installe immédiatement le ScrollTrigger et son `pin-spacer`.
+2. L’`IntersectionObserver` interne réclame le bail mémoire à environ 1,5 écran
+   et hydrate le poster.
+3. L’arbitre tient compte du sens de lecture lorsque les deux marges de
+   préchargement se chevauchent, puis libère l’autre séquence avant toute
+   nouvelle allocation.
+4. Un premier voisinage de 12 frames mobile ou 15 desktop est téléchargé et
+   passe par `img.decode()` ; le canvas devient alors jouable.
+5. Le reste du lot chauffe en arrière-plan pendant que le loader continue
+   jusqu’à 100 %.
+6. Les blobs compressés restent disponibles, mais seul un voisinage décodé
+   borné suit la frame cible. Conserver les 181 surfaces RGBA de l’ascension
+   dépasserait 1 Gio et reproduirait la purge iOS que le correctif doit éviter.
+7. Lorsque la section s’éloigne, requêtes, blobs, URLs objet et images sont
+   supprimés ; le canvas est effacé puis réduit à 1 × 1. Le poster reste visible.
 
 Plafonds résidents actuels : 16 images pour l’ascension desktop, 22 mobile, 20 pour la méthode desktop et 32 mobile. Le gestionnaire de scroll ne dessine rien : il ne fait que modifier une cible entière. Le dessin et les demandes de voisinage sont coalescés par `requestAnimationFrame`.
 
@@ -67,6 +84,10 @@ La propriété `active` doit valoir `immersive`, `method` ou `null`, jamais les 
 - Desktop : Lenis avec `lerp: 0.09`, branché au ticker GSAP ; `lagSmoothing(0)`.
 - Tactile : scroll natif, aucun Lenis ; DPR canvas plafonné à 1,5, y compris sur tablette à pointeur grossier.
 - Mobile : lot optimisé, une seule bulle méthode active en bas et progression en haut ; aucun `backdrop-filter`.
+- Les distances de pin valent toujours `section.offsetHeight - stage.offsetHeight`.
+- Une variation de hauteur mobile seule ne déclenche aucun refresh ; largeur et
+  rotation sont recalculées après 320 ms et seulement hors geste.
+- Un reload au milieu d’un des deux pins restaure la position et la frame.
 - `prefers-reduced-motion` ou économie de données : aucun pin, aucune séquence chargée, poster fixe et cinq étapes DOM empilées.
 
 ## Remplacer une séquence
