@@ -4,7 +4,7 @@ Audit final réalisé le 23 juillet 2026, puis complété le 24 juillet après l
 contrôle du scroll précédant l'immersion et le test d'une molette placée
 directement sur les canvas, sur le build statique servi par `astro preview`.
 Référence avant correction : commit `4e8d35d`. Référence fonctionnelle finale
-testée : `2b75bd5`.
+testée : `f380601`.
 
 ## Verdict
 
@@ -24,6 +24,8 @@ design, les textes, les CTA ni les autres sections :
    canvas affiche la frame décodée la plus proche sans repartir en arrière ;
 9. la molette est accélérée de 25 % uniquement lorsque son pointeur se trouve
    dans l'un des deux stages 3D, sans changer le scroll des autres sections.
+10. la méthode affiche son poster 3D dès son entrée dans le viewport ; le
+    voile noir initial ne masque plus les premiers instants de la scène.
 
 ## Environnement réellement audité
 
@@ -41,7 +43,7 @@ Trois ScrollTrigger seulement sont instanciés.
 |---|---|---|
 | Hero morph | `src/scripts/main.js:210-218` | `pin`: absent ; `pinSpacing`: absent ; `pinType`: absent ; `anticipatePin`: absent ; `scrub`: `0.42` desktop / `0.62` mobile ; `snap`: absent ; `start: "top top"` ; `end: "bottom bottom"` ; `invalidateOnRefresh: true` ; `fastScrollEnd`: absent ; `preventOverlaps`: absent |
 | Ascension | `src/scripts/immersive-sequence.js:416-445` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.65` desktop / `0.55` mobile ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
-| Méthode | `src/scripts/method-sequence.js:474-514` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
+| Méthode | `src/scripts/method-sequence.js:473-513` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
 
 Les valeurs éditables sont conservées dans
 `src/components/ImmersiveSequence.astro:14-22` et
@@ -128,8 +130,11 @@ décodage du lot entier. L'insertion tardive du `pin-spacer`, suivie d'un
 - le canvas reste à `1 × 1` tant que le pin n'est pas réellement actif ;
 - le loader continue de 0 à 100 % pendant le chargement de fond ;
 - aucun `ScrollTrigger.refresh()` après `onPlayable` ou `onReady` ;
-- les posters et le logo de sortie restent différés jusqu'à l'approche de la
-  section.
+- le poster de la méthode reçoit son URL dès l'initialisation, mais conserve
+  `loading="lazy"` : aucune requête n'est faite au premier écran et l'image
+  légère est déjà décodée lorsque la section devient visible ;
+- les autres visuels et le logo de sortie restent différés jusqu'à l'approche
+  de leur section.
 
 Test de suivi du 24 juillet : avant correction complémentaire, les 91 frames
 mobiles étaient toutes décodées entre `scrollY 852` et `1256`, alors que
@@ -140,6 +145,14 @@ l'immersion était encore à plus de deux écrans. Après correction :
 - mémoire décodée avant le pin : 21,2 Mio au lieu d'environ 77,9 Mio ;
 - canvas maintenu à `1 × 1` jusqu'à l'entrée ;
 - desktop : 8 images décodées sur 181, canvas `1 × 1`, zéro tâche longue.
+
+Contrôle de l'entrée de la méthode après suppression du voile noir :
+
+- au premier écran : zéro requête poster et zéro requête de frame méthode ;
+- desktop, section à 700 px du haut : poster AVIF complet, canvas `1 × 1` ;
+- mobile 390 × 844, section à 500 px du haut : poster complet, canvas `1 × 1`,
+  Lenis absent et zéro overflow horizontal ;
+- le canvas prend ensuite le relais par son fondu existant, sans flash noir.
 
 Impact : bloquant avant correction, corrigé.
 
@@ -233,9 +246,10 @@ Impact : aggravant avant correction, corrigé.
 |---|---|---|
 | `src/scripts/frame-sequence.js` | Petit lot jouable, fond compressé, cible prioritaire, décodage à la demande, fenêtre runtime bornée, fallback décodé proche et cache borné | Retirer l'attente bloquante, abandonner les jobs périmés et éviter que le canvas attende une frame déjà dépassée |
 | `src/scripts/immersive-sequence.js` | Pin immédiat, distance réelle, scrub amorti conservé, `anticipatePin`, `fastScrollEnd`, rendu monotone, préfetch adaptatif, resize différé, warm-up rapproché et canvas activé uniquement dans le pin | Supprimer le spacer tardif, le décalage `svh/innerHeight`, le rattrapage de sortie, les refresh mobiles et les gels de frame au scroll rapide |
-| `src/scripts/method-sequence.js` | Même stratégie, sans changer les cinq étapes ni leur label | Garantir le même comportement sur la seconde séquence |
+| `src/scripts/method-sequence.js` | Même stratégie, poster léger amorcé avant l'entrée et suppression du calcul de voile noir, sans changer les cinq étapes ni leur label | Garantir le même comportement sur la seconde séquence et montrer la scène dès son premier pixel visible |
 | `src/scripts/main.js` | Contrôleurs importés immédiatement ; restauration limitée aux deux plages pinned ; multiplicateur de molette local aux deux stages | Créer les pins avant les frames, préserver un reload à mi-page et retirer la sensation d'enfermement sans modifier les autres sections |
-| `src/styles/global.css` | Le loader méthode reste visible jusqu'à `is-loaded` | Conserver la progression 0 → 100 % pendant le chargement de fond |
+| `src/components/Methode.astro` | Retrait du voile d'entrée noir ; voile de sortie conservé | Ne plus masquer le poster et les premières frames |
+| `src/styles/global.css` | Le loader méthode reste visible jusqu'à `is-loaded` ; suppression de la règle du voile d'entrée | Conserver la progression 0 → 100 % sans écran noir initial |
 
 ## Commits isolés
 
@@ -250,6 +264,7 @@ Impact : aggravant avant correction, corrigé.
 9. `738a0e9` — `perf(frames): rapprocher le warmup des sections 3d`
 10. `d00d79f` — `perf(frames): prioriser les images visibles au scroll rapide`
 11. `2b75bd5` — `fix(scroll): liberer la molette dans les immersions`
+12. `f380601` — `fix(method): afficher la scene des son entree`
 
 Chaque changement conceptuel peut être testé ou annulé séparément.
 
@@ -266,6 +281,7 @@ Chaque changement conceptuel peut être testé ou annulé séparément.
 | 7. Reload à mi-page | **OK** | Desktop méthode : `scrollY 11568`, frame 84 et étape 3 identiques avant/après ; `deltaY = 0`, `deltaFrame = 0` |
 | 8. Scroll précédant les sections 3D | **OK** | Mobile et desktop CPU ×4 : zéro tâche longue, zéro inversion ; 6/91 et 8/181 images seulement décodées, canvas `1 × 1` avant l'entrée |
 | 9. Molette/trackpad à l'intérieur des canvas | **OK** | Molette : gain local de 25 %, zéro recapture ; trackpad simulé 24 × 25 px : 712 px continus, 29 frames monotones, zéro inversion et zéro tâche longue |
+| 10. Première apparition de la méthode | **OK** | Poster visible et décodé avant le pin sur desktop et mobile ; aucun voile noir, aucune requête au premier écran, CLS 0 |
 
 La passe PageSpeed Insights publique reste à refaire après déploiement, car
 localhost ne mesure ni CDN ni cache Vercel. L'INP de terrain nécessite des
