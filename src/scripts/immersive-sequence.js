@@ -42,7 +42,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     mobileDpr:1.5,
     desktopPixelBudget:3200000,
     mobilePixelBudget:1800000,
-    resizeDelay:180
+    resizeDelay:320
   });
 
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -65,6 +65,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var visibilityObserver = null;
   var sequenceTimeline = null;
   var resizeTimer = 0;
+  var resizeForce = false;
   var loaderRaf = 0;
   var paintRaf = 0;
   var targetFrame = 0;
@@ -74,6 +75,8 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var lastRawProgress = 0;
   var lastStageWidth = 0;
   var lastStageHeight = 0;
+  var lastRefreshWidth = 0;
+  var lastRefreshHeight = 0;
   var sequenceActive = false;
   var disabled = false;
   var listenersReady = false;
@@ -267,6 +270,8 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   section.classList.remove('is-static', 'is-booting');
   section.classList.add('is-runtime');
   section.style.setProperty('--immersive-scroll-height', ((scrollScreens + 1) * 100) + 'svh');
+  lastRefreshWidth = Math.round(stage.clientWidth || window.innerWidth);
+  lastRefreshHeight = Math.round(stage.clientHeight || window.innerHeight);
 
   /* Le pin doit exister avant le moindre téléchargement lourd. Le poster
      assure le rendu jusqu'à ce que le premier lot de frames soit disponible,
@@ -493,20 +498,39 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function resizeAfterDelay(force){
+    resizeForce = resizeForce || force;
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function(){
-      var nextWidth = Math.round(stage.clientWidth || window.innerWidth);
-      var nextHeight = Math.round(stage.clientHeight || window.innerHeight);
-      if(
-        !force &&
-        useMobileFrames &&
-        nextWidth === lastStageWidth &&
-        Math.abs(nextHeight - lastStageHeight) < 110
-      ) return;
+    resizeTimer = setTimeout(settleResize, CONFIG.resizeDelay);
+  }
 
-      if(sequenceActive) resizeCanvas(force);
-      if(sequenceTimeline && sequenceTimeline.scrollTrigger) ScrollTrigger.refresh();
-    }, CONFIG.resizeDelay);
+  function settleResize(){
+    if(typeof ScrollTrigger.isScrolling === 'function' && ScrollTrigger.isScrolling()){
+      resizeTimer = setTimeout(settleResize, 120);
+      return;
+    }
+
+    var force = resizeForce;
+    resizeForce = false;
+    var nextWidth = Math.round(stage.clientWidth || window.innerWidth);
+    var nextHeight = Math.round(stage.clientHeight || window.innerHeight);
+    var widthChanged = Math.abs(nextWidth - lastRefreshWidth) > 1;
+    var heightChanged = Math.abs(nextHeight - lastRefreshHeight) > 1;
+
+    /* Sur un écran tactile, une variation de hauteur seule correspond presque
+       toujours à la barre d'URL. 100svh reste stable : aucun refresh du pin
+       ne doit être déclenché pendant ou juste après ce geste. */
+    if(!force && coarsePointer.matches && !widthChanged){
+      lastRefreshHeight = nextHeight;
+      return;
+    }
+    if(!force && !widthChanged && !heightChanged) return;
+
+    lastRefreshWidth = nextWidth;
+    lastRefreshHeight = nextHeight;
+    if(sequenceActive) resizeCanvas(force || widthChanged);
+    if(sequenceTimeline && sequenceTimeline.scrollTrigger){
+      ScrollTrigger.refresh();
+    }
   }
 
   function queueResize(){ resizeAfterDelay(false); }

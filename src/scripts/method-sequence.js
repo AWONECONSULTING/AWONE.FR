@@ -41,7 +41,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     entryEnd:.06,
     exitStart:.92,
     stepsEnd:.9,
-    resizeDelay:180
+    resizeDelay:320
   });
 
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -62,6 +62,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var visibilityObserver = null;
   var scrollTween = null;
   var resizeTimer = 0;
+  var resizeForce = false;
   var loaderRaf = 0;
   var paintRaf = 0;
   var activeStep = -1;
@@ -74,6 +75,8 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var paintedProgress = -1;
   var lastStageWidth = 0;
   var lastStageHeight = 0;
+  var lastRefreshWidth = 0;
+  var lastRefreshHeight = 0;
   var sequenceActive = false;
   var disabled = false;
   var listenersReady = false;
@@ -256,6 +259,8 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   section.classList.remove('is-static', 'is-booting');
   section.classList.add('is-runtime');
   section.style.setProperty('--method-scroll-height', ((CONFIG.scrollScreens + 1) * 100) + 'svh');
+  lastRefreshWidth = Math.round(stage.clientWidth || window.innerWidth);
+  lastRefreshHeight = Math.round(stage.clientHeight || window.innerHeight);
 
   /* La structure épinglée est installée avant le warm-up des images. La
      constellation et le poster restent fonctionnels pendant le chargement,
@@ -530,21 +535,35 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function resizeAfterDelay(force){
+    resizeForce = resizeForce || force;
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function(){
-      var nextWidth = Math.round(stage.clientWidth || window.innerWidth);
-      var nextHeight = Math.round(stage.clientHeight || window.innerHeight);
-      if(
-        !force &&
-        mobileLayout.matches &&
-        nextWidth === lastStageWidth &&
-        Math.abs(nextHeight - lastStageHeight) < 110
-      ) return;
+    resizeTimer = setTimeout(settleResize, CONFIG.resizeDelay);
+  }
 
-      if(sequenceActive) resizeCanvas(force);
-      else layoutConnectors();
-      if(scrollTween && scrollTween.scrollTrigger) ScrollTrigger.refresh();
-    }, CONFIG.resizeDelay);
+  function settleResize(){
+    if(typeof ScrollTrigger.isScrolling === 'function' && ScrollTrigger.isScrolling()){
+      resizeTimer = setTimeout(settleResize, 120);
+      return;
+    }
+
+    var force = resizeForce;
+    resizeForce = false;
+    var nextWidth = Math.round(stage.clientWidth || window.innerWidth);
+    var nextHeight = Math.round(stage.clientHeight || window.innerHeight);
+    var widthChanged = Math.abs(nextWidth - lastRefreshWidth) > 1;
+    var heightChanged = Math.abs(nextHeight - lastRefreshHeight) > 1;
+
+    if(!force && coarsePointer.matches && !widthChanged){
+      lastRefreshHeight = nextHeight;
+      return;
+    }
+    if(!force && !widthChanged && !heightChanged) return;
+
+    lastRefreshWidth = nextWidth;
+    lastRefreshHeight = nextHeight;
+    if(sequenceActive) resizeCanvas(force || widthChanged);
+    else layoutConnectors();
+    if(scrollTween && scrollTween.scrollTrigger) ScrollTrigger.refresh();
   }
 
   function queueResize(){ resizeAfterDelay(false); }
