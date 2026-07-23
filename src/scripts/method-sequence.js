@@ -125,6 +125,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     concurrency:useMobileFrames ? CONFIG.mobileConcurrency : CONFIG.desktopConcurrency,
     runtimeConcurrency:useMobileFrames ? 2 : 3,
     maxDecoded:useMobileFrames ? 32 : 20,
+    playableCount:useMobileFrames ? 12 : 15,
     formats:['avif', 'webp'],
     frameUrl:frameUrl,
     priority:function(count){
@@ -134,7 +135,13 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
       }
       return list;
     },
-    onProgress:scheduleLoaderProgress
+    onProgress:scheduleLoaderProgress,
+    onReady:function(){
+      setLoaderProgress(frameCount, frameCount);
+      section.classList.remove('is-loading');
+      section.classList.add('is-loaded');
+      lease.update();
+    }
   });
 
   function sequenceState(){
@@ -188,7 +195,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf = 0; }
     if(loaderRaf){ cancelAnimationFrame(loaderRaf); loaderRaf = 0; }
     clearCanvas();
-    section.classList.remove('is-loading', 'is-ready', 'is-canvas-ready');
+    section.classList.remove('is-loading', 'is-loaded', 'is-ready', 'is-canvas-ready');
     section.classList.add('is-released');
     setLoaderProgress(0, frameCount);
     lease.relinquish();
@@ -208,7 +215,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     store.release();
     clearCanvas();
     section.classList.remove(
-      'is-booting', 'is-runtime', 'is-loading', 'is-ready',
+      'is-booting', 'is-runtime', 'is-loading', 'is-loaded', 'is-ready',
       'is-canvas-ready', 'is-scroll-ready', 'is-released', 'has-started'
     );
     section.classList.add('is-static');
@@ -426,6 +433,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     var nextFrame = Math.max(0, Math.min(frameCount - 1, Math.round(value)));
     if(nextFrame !== targetFrame) frameDirection = nextFrame > targetFrame ? 1 : -1;
     targetFrame = nextFrame;
+    store.setTarget(nextFrame);
     schedulePaint();
   }
 
@@ -485,9 +493,9 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function activateSequence(){
-    if(disabled || !store.isReady()) return;
+    if(disabled || !store.isPlayable()) return;
     sequenceActive = true;
-    section.classList.remove('is-loading', 'is-released');
+    section.classList.remove('is-released');
     section.classList.remove('is-canvas-ready');
     section.classList.add('is-ready');
     resizeCanvas(true);
@@ -508,7 +516,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     section.classList.remove('is-released');
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’expérience';
-    if(store.isReady()){
+    if(store.isPlayable()){
       activateSequence();
       return;
     }

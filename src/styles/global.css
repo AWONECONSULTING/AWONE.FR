@@ -362,10 +362,10 @@ body.menu-open{overflow:hidden}
   opacity:0;pointer-events:none;transform:translate3d(0,8px,0);
   transition:opacity .36s ease,transform .42s cubic-bezier(.22,1,.36,1);
 }
-.method-cinematic.is-loading:not(.is-ready):not(.is-static) .method-loader{
+.method-cinematic.is-loading:not(.is-loaded):not(.is-static) .method-loader{
   opacity:1;transform:translate3d(0,0,0);
 }
-.method-cinematic.is-ready .method-loader{opacity:0;transform:translate3d(0,8px,0)}
+.method-cinematic.is-loaded .method-loader{opacity:0;transform:translate3d(0,8px,0)}
 .method-loader-copy{display:flex;align-items:center;justify-content:space-between;gap:1rem}
 .method-loader-copy span{font-size:.6rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
 .method-loader-copy strong{

@@ -118,10 +118,10 @@ function isCancelled(error){
   return error && (error.name === 'AbortError' || error.name === 'StaleFrameLoad');
 }
 
-/* Toutes les frames sont téléchargées et passées par img.decode() pendant le
-   warm-up. Les blobs restent disponibles, mais seul un voisinage décodé borné
-   est conservé : retenir 181 surfaces RGBA ferait dépasser 1 Go sur la scène
-   verticale et reproduirait précisément les purges de canvas iOS. */
+/* Un premier voisinage est téléchargé et décodé pour rendre le canvas jouable,
+   puis le reste du lot chauffe en arrière-plan. Les blobs restent disponibles,
+   mais seul un cache décodé borné est conservé : retenir 181 surfaces RGBA
+   ferait dépasser 1 Go et reproduirait les purges de canvas iOS. */
 export function createDecodedFrameStore(options){
   var frameCount = options.frameCount;
   var sources = new Array(frameCount);
@@ -132,9 +132,11 @@ export function createDecodedFrameStore(options){
   var generation = 0;
   var controller = null;
   var loadPromise = null;
+  var backgroundPromise = null;
   var desiredIndex = 0;
   var touchCounter = 0;
   var maxDecoded = Math.max(4, Math.min(frameCount, options.maxDecoded || 18));
+  var playableCount = Math.max(1, Math.min(frameCount, options.playableCount || 12));
   var runtimeConcurrency = Math.max(1, options.runtimeConcurrency || 2);
   var runtimeActive = 0;
   var runtimeQueue = [];
@@ -258,15 +260,29 @@ export function createDecodedFrameStore(options){
   function orderedIndexes(){
     var indexes = [];
     var seen = new Set([0]);
+    var center = Math.max(0, Math.min(frameCount - 1, Math.round(desiredIndex)));
+    var initialSlots = Math.max(0, playableCount - 1);
+    function add(index){
+      index = Math.max(0, Math.min(frameCount - 1, Math.round(index)));
+      if(!seen.has(index)){ seen.add(index); indexes.push(index); }
+    }
+
+    /* Le premier lot suit la position réelle du playhead. Au chargement
+       normal il contient donc les premières frames ; après restauration à
+       mi-page il se centre directement autour de la frame visible. */
+    for(var radius = 0; indexes.length < initialSlots && radius < frameCount; radius++){
+      add(center + radius);
+      if(radius) add(center - radius);
+    }
+
     var priority = typeof options.priority === 'function'
       ? options.priority(frameCount)
       : [frameCount - 1, Math.round((frameCount - 1) * .5)];
-    priority.forEach(function(index){
-      index = Math.max(0, Math.min(frameCount - 1, Math.round(index)));
-      if(!seen.has(index)){ seen.add(index); indexes.push(index); }
-    });
-    for(var index = 1; index < frameCount; index++){
-      if(!seen.has(index)){ seen.add(index); indexes.push(index); }
+    priority.forEach(add);
+
+    for(var distance = 0; distance < frameCount; distance++){
+      add(center + distance);
+      if(distance) add(center - distance);
     }
     return indexes;
   }
@@ -277,7 +293,9 @@ export function createDecodedFrameStore(options){
   }
 
   function load(){
-    if(phase === 'ready') return Promise.resolve(true);
+    if(phase === 'playable' || phase === 'ready' || phase === 'partial'){
+      return Promise.resolve(true);
+    }
     if(phase === 'loading' && loadPromise) return loadPromise;
 
     generation += 1;
@@ -288,10 +306,69 @@ export function createDecodedFrameStore(options){
     warmedCount = 0;
     transferredBytes = 0;
     selectedFormat = 'webp';
-    desiredIndex = 0;
     touchCounter = 0;
     cancelRuntimeQueue();
     disposeAll();
+
+    async function runWorkers(queue, tolerateFailures){
+      var cursor = 0;
+      var failures = 0;
+      var workerCount = Math.min(
+        queue.length,
+        Math.max(1, options.concurrency || 4)
+      );
+      async function worker(){
+        while(cursor < queue.length){
+          var index = queue[cursor++];
+          try {
+            var blob = await fetchBlob(index, selectedFormat, signal, 0);
+            var decoded = await decodeBlob(blob, token);
+            commitWarm(index, blob, decoded, token);
+          } catch(error) {
+            if(isCancelled(error) || token !== generation) throw error;
+            if(!tolerateFailures) throw error;
+            failures += 1;
+          }
+        }
+      }
+
+      var workers = [];
+      for(var workerIndex = 0; workerIndex < workerCount; workerIndex++){
+        workers.push(worker());
+      }
+      await Promise.all(workers);
+      return failures;
+    }
+
+    function loadRemaining(queue){
+      backgroundPromise = runWorkers(queue, true)
+        .then(function(failures){
+          if(token !== generation) throw staleError();
+          phase = failures ? 'partial' : 'ready';
+          trimDecoded();
+          if(!failures && typeof options.onReady === 'function'){
+            options.onReady(selectedFormat);
+          }
+          if(failures && typeof options.onBackgroundError === 'function'){
+            options.onBackgroundError(failures);
+          }
+          return !failures;
+        })
+        .catch(function(error){
+          if(isCancelled(error) || token !== generation) return false;
+          phase = 'partial';
+          if(typeof options.onBackgroundError === 'function'){
+            options.onBackgroundError(1);
+          }
+          return false;
+        })
+        .finally(function(){
+          if(token === generation){
+            controller = null;
+            backgroundPromise = null;
+          }
+        });
+    }
 
     loadPromise = (async function(){
       var formats = options.formats && options.formats.length ? options.formats : ['webp'];
@@ -317,29 +394,25 @@ export function createDecodedFrameStore(options){
       commitWarm(0, firstBlob, firstDecoded, token);
 
       var queue = orderedIndexes();
-      var cursor = 0;
-      var workerCount = Math.max(1, options.concurrency || 4);
-      async function worker(){
-        while(cursor < queue.length){
-          var index = queue[cursor++];
-          var blob = await fetchBlob(index, selectedFormat, signal, 0);
-          var decoded = await decodeBlob(blob, token);
-          commitWarm(index, blob, decoded, token);
-        }
+      var initialNeeded = Math.max(0, playableCount - warmedCount);
+      var initialQueue = queue.splice(0, initialNeeded);
+      await runWorkers(initialQueue, false);
+      if(token !== generation) throw staleError();
+
+      phase = 'playable';
+      trimDecoded();
+      if(typeof options.onPlayable === 'function'){
+        options.onPlayable(selectedFormat);
       }
 
-      var workers = [];
-      for(var workerIndex = 0; workerIndex < workerCount; workerIndex++) workers.push(worker());
-      await Promise.all(workers);
-      if(token !== generation) throw staleError();
-      phase = 'ready';
-      trimDecoded();
-      if(typeof options.onReady === 'function') options.onReady(selectedFormat);
+      loadRemaining(queue);
       return true;
     })().catch(function(error){
       if(isCancelled(error) || token !== generation) return false;
       phase = 'error';
       if(controller) controller.abort();
+      controller = null;
+      backgroundPromise = null;
       cancelRuntimeQueue();
       disposeAll();
       warmedCount = 0;
@@ -347,10 +420,7 @@ export function createDecodedFrameStore(options){
       if(typeof options.onError === 'function') options.onError(error);
       throw error;
     }).finally(function(){
-      if(token === generation){
-        controller = null;
-        loadPromise = null;
-      }
+      if(token === generation) loadPromise = null;
     });
 
     return loadPromise;
@@ -362,7 +432,7 @@ export function createDecodedFrameStore(options){
         runtimeActive += 1;
         var source = sources[job.index];
         var token = generation;
-        if(!source || !source.blob || phase !== 'ready'){
+        if(!source || !source.blob || !isPlayable()){
           runtimeActive -= 1;
           runtimePromises.delete(job.index);
           job.resolve(null);
@@ -370,7 +440,7 @@ export function createDecodedFrameStore(options){
           return;
         }
         decodeBlob(source.blob, token).then(function(decoded){
-          if(token !== generation || phase !== 'ready'){
+          if(token !== generation || !isPlayable()){
             decoded.image.src = '';
             URL.revokeObjectURL(decoded.objectUrl);
             return null;
@@ -401,7 +471,7 @@ export function createDecodedFrameStore(options){
       source.touched = ++touchCounter;
       return Promise.resolve(source.image);
     }
-    if(phase !== 'ready' || !source || !source.blob) return Promise.resolve(null);
+    if(!isPlayable() || !source || !source.blob) return Promise.resolve(null);
     if(runtimePromises.has(index)) return runtimePromises.get(index);
 
     var resolveJob;
@@ -418,6 +488,7 @@ export function createDecodedFrameStore(options){
     if(controller) controller.abort();
     controller = null;
     loadPromise = null;
+    backgroundPromise = null;
     phase = 'idle';
     warmedCount = 0;
     transferredBytes = 0;
@@ -440,6 +511,10 @@ export function createDecodedFrameStore(options){
       compressedMB:+(transferredBytes / 1048576).toFixed(2),
       estimatedDecodedMB:+(resident * width * height * 4 / 1048576).toFixed(1)
     };
+  }
+
+  function isPlayable(){
+    return phase === 'playable' || phase === 'ready' || phase === 'partial';
   }
 
   return {
@@ -466,6 +541,7 @@ export function createDecodedFrameStore(options){
       if(source && source.image){ source.touched = ++touchCounter; return source.image; }
       return null;
     },
+    isPlayable:isPlayable,
     isReady:function(){ return phase === 'ready'; },
     state:state
   };

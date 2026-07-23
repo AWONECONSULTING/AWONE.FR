@@ -133,6 +133,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     concurrency:useMobileFrames ? CONFIG.mobileConcurrency : CONFIG.desktopConcurrency,
     runtimeConcurrency:useMobileFrames ? 2 : 3,
     maxDecoded:useMobileFrames ? 22 : 16,
+    playableCount:useMobileFrames ? 12 : 15,
     formats:['avif', 'webp'],
     frameUrl:frameUrl,
     priority:function(count){
@@ -143,7 +144,14 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
         Math.round((count - 1) * .75)
       ];
     },
-    onProgress:scheduleLoaderProgress
+    onProgress:scheduleLoaderProgress,
+    onReady:function(){
+      setLoaderProgress(frameCount, frameCount);
+      section.classList.remove('is-loading');
+      section.classList.add('is-loaded');
+      if(loader) loader.setAttribute('aria-label', 'Expérience immersive chargée');
+      lease.update();
+    }
   });
 
   function sequenceState(){
@@ -363,6 +371,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     var nextFrame = Math.max(0, Math.min(frameCount - 1, Math.round(value)));
     if(nextFrame !== targetFrame) frameDirection = nextFrame > targetFrame ? 1 : -1;
     targetFrame = nextFrame;
+    store.setTarget(nextFrame);
     schedulePaint();
   }
 
@@ -448,12 +457,11 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function activateSequence(){
-    if(disabled || !store.isReady()) return;
+    if(disabled || !store.isPlayable()) return;
     sequenceActive = true;
-    section.classList.remove('is-loading', 'is-released');
+    section.classList.remove('is-released');
     section.classList.remove('is-canvas-ready');
-    section.classList.add('is-loaded', 'is-ready');
-    if(loader) loader.setAttribute('aria-label', 'Expérience immersive chargée');
+    section.classList.add('is-ready');
     resizeCanvas(true);
     drawnFrame = -1;
     flushPaint();
@@ -471,7 +479,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     section.classList.remove('is-released');
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’ascension';
-    if(store.isReady()){
+    if(store.isPlayable()){
       activateSequence();
       return;
     }
