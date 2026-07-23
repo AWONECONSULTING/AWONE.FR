@@ -420,7 +420,10 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function scrollDistance(){
-    return Math.round(Math.max(stage.clientHeight, window.innerHeight) * CONFIG.scrollScreens);
+    /* La section réserve elle-même toute la longueur du récit. Avec
+       pinSpacing:false, son espace disponible est l'unique source de vérité :
+       cela évite le dépassement créé par window.innerHeight face à 100svh. */
+    return Math.max(1, Math.round(section.offsetHeight - stage.offsetHeight));
   }
 
   function initScrollSequence(){

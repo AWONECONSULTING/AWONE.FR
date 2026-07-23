@@ -357,7 +357,10 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function scrollDistance(){
-    return Math.round(Math.max(stage.clientHeight, window.innerHeight) * scrollScreens);
+    /* pinSpacing:false s'appuie sur la hauteur déjà réservée par la section.
+       La distance doit donc être exactement l'espace restant sous le stage,
+       sans mélanger 100svh avec window.innerHeight (variable sur mobile). */
+    return Math.max(1, Math.round(section.offsetHeight - stage.offsetHeight));
   }
 
   function initScrollSequence(){
