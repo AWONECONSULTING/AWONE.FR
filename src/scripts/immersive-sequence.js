@@ -1,8 +1,8 @@
 import { gsap, ScrollTrigger } from './motion.js';
 import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence.js';
 
-/* Ascension immersive : le pin et son poster sont prêts immédiatement, puis
-   le lot adapté à l'écran chauffe à distance. L'arbitre partagé garantit que
+/* Ascension immersive : le pin est prêt immédiatement, puis le poster et le
+   lot adapté à l'écran chauffent à distance. L'arbitre partagé garantit que
    cette séquence et la méthode ne gardent jamais leurs images simultanément. */
 (function(){
   var section = document.querySelector('.immersive-sequence');
@@ -188,8 +188,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     }
   });
 
-  hydratePoster();
-
   function clearCanvas(){
     if(!canvas) return;
     if(context) context.clearRect(0, 0, canvas.width, canvas.height);
@@ -234,6 +232,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     setImmersiveVisible(false);
     if(loaderLabel) loaderLabel.textContent = message || 'Image fixe';
     if(loader) loader.setAttribute('aria-label', message || 'Expérience immersive en image fixe');
+    hydratePoster();
     loadSpinnerLogo();
     lease.relinquish();
     lease.update();
@@ -390,7 +389,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   function initScrollSequence(){
     var playhead = {frame:targetFrame};
     section.classList.add('is-scroll-ready');
-    loadSpinnerLogo();
 
     sequenceTimeline = gsap.timeline({
       scrollTrigger:{
@@ -482,6 +480,8 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
       section.classList.add('is-released');
       return;
     }
+    hydratePoster();
+    loadSpinnerLogo();
     section.classList.remove('is-released');
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’ascension';

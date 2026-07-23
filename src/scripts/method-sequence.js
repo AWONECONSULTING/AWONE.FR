@@ -179,8 +179,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     }
   });
 
-  hydratePoster();
-
   function clearCanvas(){
     if(!canvas || !context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -224,6 +222,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     section.classList.add('is-static');
     setMethodVisible(false);
     if(status) status.textContent = message || 'Les cinq étapes de la méthode AWONE';
+    hydratePoster();
     lease.relinquish();
     lease.update();
   }
@@ -519,6 +518,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
       section.classList.add('is-released');
       return;
     }
+    hydratePoster();
     section.classList.remove('is-released');
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’expérience';
