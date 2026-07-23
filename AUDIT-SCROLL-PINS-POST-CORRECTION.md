@@ -4,7 +4,7 @@ Audit final réalisé le 23 juillet 2026, puis complété le 24 juillet après l
 contrôle du scroll précédant l'immersion et le test d'une molette placée
 directement sur les canvas, sur le build statique servi par `astro preview`.
 Référence avant correction : commit `4e8d35d`. Référence fonctionnelle finale
-testée : `f380601`.
+testée : `21234f0`.
 
 ## Verdict
 
@@ -24,8 +24,10 @@ design, les textes, les CTA ni les autres sections :
    canvas affiche la frame décodée la plus proche sans repartir en arrière ;
 9. la molette est accélérée de 25 % uniquement lorsque son pointeur se trouve
    dans l'un des deux stages 3D, sans changer le scroll des autres sections.
-10. la méthode affiche son poster 3D dès son entrée dans le viewport ; le
-    voile noir initial ne masque plus les premiers instants de la scène.
+10. la méthode affiche la vraie `frame_0001` responsive dès son entrée dans le
+    viewport ; l'ancien poster, issu du milieu de la séquence, a été retiré ;
+11. les premières frames sont scrubées pendant l'entrée de la section, puis le
+    pin reprend à la frame suivante sans saut, répétition ni retour en arrière.
 
 ## Environnement réellement audité
 
@@ -37,13 +39,16 @@ design, les textes, les CTA ni les autres sections :
 
 ## 1. Inventaire final des ScrollTrigger
 
-Trois ScrollTrigger seulement sont instanciés.
+Quatre ScrollTrigger seulement sont instanciés. Le quatrième est le trigger
+non épinglé d'entrée de la méthode : il ne réserve aucun espace et ne modifie
+jamais la position de scroll.
 
 | Déclencheur | Localisation | Options constatées |
 |---|---|---|
 | Hero morph | `src/scripts/main.js:210-218` | `pin`: absent ; `pinSpacing`: absent ; `pinType`: absent ; `anticipatePin`: absent ; `scrub`: `0.42` desktop / `0.62` mobile ; `snap`: absent ; `start: "top top"` ; `end: "bottom bottom"` ; `invalidateOnRefresh: true` ; `fastScrollEnd`: absent ; `preventOverlaps`: absent |
 | Ascension | `src/scripts/immersive-sequence.js:416-445` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.65` desktop / `0.55` mobile ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
-| Méthode | `src/scripts/method-sequence.js:473-513` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
+| Entrée méthode | `src/scripts/method-sequence.js:490-512` | `pin`: absent ; `pinSpacing`: absent ; `pinType`: absent ; `anticipatePin`: absent ; `scrub`: absent ; `snap`: absent ; `start: "top bottom"` ; `end: "top top"` ; `invalidateOnRefresh: true` ; `fastScrollEnd`: absent ; `preventOverlaps`: absent |
+| Méthode | `src/scripts/method-sequence.js:519-555` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
 
 Les valeurs éditables sont conservées dans
 `src/components/ImmersiveSequence.astro:14-22` et
@@ -58,9 +63,9 @@ raison.
 Constat :
 
 - aucun `snap`, `snapTo`, `directional`, `duration` de snap ou `inertia` dans
-  les trois ScrollTrigger ;
+  les quatre ScrollTrigger ;
 - `snap: {frame: 1}` existe sur les tweens des playheads
-  (`immersive-sequence.js:431` et `method-sequence.js:459`) ;
+  (`immersive-sequence.js:452` et `method-sequence.js:517`) ;
 - ce snap arrondit seulement un numéro de frame. Il ne déplace jamais la page ;
 - le `scroll-snap-type: x proximity` de `global.css:1213` appartient au
   carrousel horizontal « Situations » et n'agit pas sur l'axe vertical.
@@ -130,9 +135,11 @@ décodage du lot entier. L'insertion tardive du `pin-spacer`, suivie d'un
 - le canvas reste à `1 × 1` tant que le pin n'est pas réellement actif ;
 - le loader continue de 0 à 100 % pendant le chargement de fond ;
 - aucun `ScrollTrigger.refresh()` après `onPlayable` ou `onReady` ;
-- le poster de la méthode reçoit son URL dès l'initialisation, mais conserve
-  `loading="lazy"` : aucune requête n'est faite au premier écran et l'image
-  légère est déjà décodée lorsque la section devient visible ;
+- le poster de la méthode utilise exactement `frame_0001`, avec une source
+  AVIF puis WebP propre à chaque viewport ; il reçoit son URL dès
+  l'initialisation, mais conserve `loading="lazy"` : aucune requête n'est faite
+  au premier écran et l'image légère est déjà décodée lorsque la section
+  devient visible ;
 - les autres visuels et le logo de sortie restent différés jusqu'à l'approche
   de leur section.
 
@@ -146,13 +153,20 @@ l'immersion était encore à plus de deux écrans. Après correction :
 - canvas maintenu à `1 × 1` jusqu'à l'entrée ;
 - desktop : 8 images décodées sur 181, canvas `1 × 1`, zéro tâche longue.
 
-Contrôle de l'entrée de la méthode après suppression du voile noir :
+Contrôle de l'entrée de la méthode après suppression du poster intermédiaire :
 
 - au premier écran : zéro requête poster et zéro requête de frame méthode ;
-- desktop, section à 700 px du haut : poster AVIF complet, canvas `1 × 1` ;
-- mobile 390 × 844, section à 500 px du haut : poster complet, canvas `1 × 1`,
-  Lenis absent et zéro overflow horizontal ;
-- le canvas prend ensuite le relais par son fondu existant, sans flash noir.
+- desktop 1440 × 900 : à la frontière d'entrée, la source affichée est
+  `desktop-avif/frame_0001.avif` ; les fichiers affichés avancent ensuite
+  `0004`, `0007`, `0010`, `0013`, `0015`, `0018`, `0021`, `0024`, `0027`
+  jusqu'au début du pin, puis `0029` et `0032` après 200 px de pin ;
+- mobile 390 × 844 : la source affichée est
+  `mobile-optimized-avif/frame_0001.avif` ; le premier swipe affiche
+  `0001`, `0002`, `0004`, `0006`, `0009`, `0011`, `0013`, `0015`, `0016`,
+  `0019` puis continue jusqu'à `0029` ;
+- zéro frame dans le mauvais sens sur les passes avant et arrière ;
+- le canvas prend le relais par son fondu existant, sans poster hors séquence,
+  flash noir ni rupture au début du pin.
 
 Impact : bloquant avant correction, corrigé.
 
@@ -172,6 +186,10 @@ Constat final :
 - si la frame exacte n'est pas encore prête, le canvas utilise la surface
   décodée la plus proche dans une fenêtre de sept frames, avec progression
   monotone ;
+- dans la méthode, les indices `0 → 26` desktop et `0 → 18` mobile sont
+  pilotés pendant le viewport d'entrée ; le pin continue respectivement à
+  partir des fichiers `frame_0027` et `frame_0019`, puis va jusqu'à la dernière
+  frame ;
 - quand le canvas accuse plus de trois frames de retard, le préchargement des
   voisines est suspendu temporairement afin de rendre la priorité à la cible ;
 - chaque fin de décodage réveille un seul prochain rendu via
@@ -246,9 +264,9 @@ Impact : aggravant avant correction, corrigé.
 |---|---|---|
 | `src/scripts/frame-sequence.js` | Petit lot jouable, fond compressé, cible prioritaire, décodage à la demande, fenêtre runtime bornée, fallback décodé proche et cache borné | Retirer l'attente bloquante, abandonner les jobs périmés et éviter que le canvas attende une frame déjà dépassée |
 | `src/scripts/immersive-sequence.js` | Pin immédiat, distance réelle, scrub amorti conservé, `anticipatePin`, `fastScrollEnd`, rendu monotone, préfetch adaptatif, resize différé, warm-up rapproché et canvas activé uniquement dans le pin | Supprimer le spacer tardif, le décalage `svh/innerHeight`, le rattrapage de sortie, les refresh mobiles et les gels de frame au scroll rapide |
-| `src/scripts/method-sequence.js` | Même stratégie, poster léger amorcé avant l'entrée et suppression du calcul de voile noir, sans changer les cinq étapes ni leur label | Garantir le même comportement sur la seconde séquence et montrer la scène dès son premier pixel visible |
+| `src/scripts/method-sequence.js` | Même stratégie, poster léger amorcé avant l'entrée, trigger d'entrée non épinglé et continuité exacte entre les frames d'entrée et celles du pin, sans changer les cinq étapes ni leur label | Garantir le même comportement sur la seconde séquence, commencer l'animation dès son premier pixel visible et interdire tout saut de frame au début du pin |
 | `src/scripts/main.js` | Contrôleurs importés immédiatement ; restauration limitée aux deux plages pinned ; multiplicateur de molette local aux deux stages | Créer les pins avant les frames, préserver un reload à mi-page et retirer la sensation d'enfermement sans modifier les autres sections |
-| `src/components/Methode.astro` | Retrait du voile d'entrée noir ; voile de sortie conservé | Ne plus masquer le poster et les premières frames |
+| `src/components/Methode.astro` | Retrait du voile d'entrée noir ; remplacement du poster intermédiaire par les vraies sources responsive `frame_0001` AVIF/WebP ; voile de sortie conservé | Ne plus masquer les premières frames et garantir que la première image visible appartient bien au début de la séquence |
 | `src/styles/global.css` | Le loader méthode reste visible jusqu'à `is-loaded` ; suppression de la règle du voile d'entrée | Conserver la progression 0 → 100 % sans écran noir initial |
 
 ## Commits isolés
@@ -265,6 +283,7 @@ Impact : aggravant avant correction, corrigé.
 10. `d00d79f` — `perf(frames): prioriser les images visibles au scroll rapide`
 11. `2b75bd5` — `fix(scroll): liberer la molette dans les immersions`
 12. `f380601` — `fix(method): afficher la scene des son entree`
+13. `21234f0` — `fix(method): respecter l ordre des frames des l entree`
 
 Chaque changement conceptuel peut être testé ou annulé séparément.
 
@@ -278,10 +297,11 @@ Chaque changement conceptuel peut être testé ou annulé séparément.
 | 4. Aucune long task > 50 ms pendant le scroll CPU ×4 | **OK** | Zéro entrée `longtask` sur les deux séquences desktop et mobile, molette rapide, trackpad simulé et swipe |
 | 5. CLS = 0 aux frontières | **OK** | Zéro `layout-shift` aux entrées et sorties ; Lighthouse global : 0,005 mobile, 0 desktop |
 | 6. Performance mobile et INP | **OK local / production à confirmer** | Lighthouse mobile 98, identique à la dernière référence de production, TBT 0 ms ; événements tactiles max 40 ms, délai max 2,9 ms |
-| 7. Reload à mi-page | **OK** | Desktop méthode : `scrollY 11568`, frame 84 et étape 3 identiques avant/après ; `deltaY = 0`, `deltaFrame = 0` |
+| 7. Reload à mi-page | **OK** | Desktop méthode : `scrollY 11568`, frame 98 et étape 3 identiques avant/après ; `deltaY = 0`, `deltaFrame = 0` |
 | 8. Scroll précédant les sections 3D | **OK** | Mobile et desktop CPU ×4 : zéro tâche longue, zéro inversion ; 6/91 et 8/181 images seulement décodées, canvas `1 × 1` avant l'entrée |
 | 9. Molette/trackpad à l'intérieur des canvas | **OK** | Molette : gain local de 25 %, zéro recapture ; trackpad simulé 24 × 25 px : 712 px continus, 29 frames monotones, zéro inversion et zéro tâche longue |
-| 10. Première apparition de la méthode | **OK** | Poster visible et décodé avant le pin sur desktop et mobile ; aucun voile noir, aucune requête au premier écran, CLS 0 |
+| 10. Première apparition de la méthode | **OK** | Vraie `frame_0001` responsive visible à la frontière desktop et mobile ; aucun poster intermédiaire, aucun voile noir, aucune requête au premier écran, CLS 0 |
+| 11. Ordre des frames à l'entrée | **OK** | Desktop : `0001 → 0027` pendant l'entrée puis continuation dans le pin ; mobile : `0001 → 0019` puis continuation ; zéro inversion sur molette, swipe et sens retour |
 
 La passe PageSpeed Insights publique reste à refaire après déploiement, car
 localhost ne mesure ni CDN ni cache Vercel. L'INP de terrain nécessite des
@@ -299,6 +319,8 @@ données réelles ; la mesure locale Event Timing reste très inférieure à
 - matrice 320, 360, 390, 430, 768, 844 paysage, 1024, 1440 et 1920 px :
   zéro overflow horizontal, spacer présent dès le chargement ;
 - mode mouvement réduit : aucun pin, zéro frame, cinq étapes visibles ;
+- nouveau contrôle mouvement réduit : après arrivée sur la méthode, poster
+  `frame_0001`, aucun spacer et cinq étapes visibles ;
 - parcours intégral mobile et desktop : zéro HTTP ≥ 400, zéro échec réseau,
   zéro exception, zéro erreur ou avertissement console ;
 - dernière frame atteinte environ 12 ms après une sortie rapide ;
