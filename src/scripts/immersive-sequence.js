@@ -1,9 +1,9 @@
 import { gsap, ScrollTrigger } from './motion.js';
 import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence.js';
 
-/* Ascension immersive : le lot adapté à l'écran est décodé avant le scrub.
-   L'arbitre partagé garantit que cette séquence et la méthode ne conservent
-   jamais simultanément leurs images en mémoire. */
+/* Ascension immersive : le pin et son poster sont prêts immédiatement, puis
+   le lot adapté à l'écran chauffe à distance. L'arbitre partagé garantit que
+   cette séquence et la méthode ne gardent jamais leurs images simultanément. */
 (function(){
   var section = document.querySelector('.immersive-sequence');
   if(!section) return;
@@ -260,6 +260,16 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   section.classList.add('is-runtime');
   section.style.setProperty('--immersive-scroll-height', ((scrollScreens + 1) * 100) + 'svh');
 
+  /* Le pin doit exister avant le moindre téléchargement lourd. Le poster
+     assure le rendu jusqu'à ce que le premier lot de frames soit disponible,
+     sans reprise de contrôle tardive au milieu d'un geste. */
+  try { initScrollSequence(); }
+  catch(error) {
+    activateStatic('Image fixe · animation indisponible');
+    return;
+  }
+  addResizeListeners();
+
   if('IntersectionObserver' in window){
     visibilityObserver = new IntersectionObserver(function(entries){
       entries.forEach(function(entry){ setImmersiveVisible(entry.isIntersecting); });
@@ -425,8 +435,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
           {opacity:0,y:14,letterSpacing:'.38em'},
           {opacity:1,y:0,letterSpacing:'.24em',duration:.2,ease:'power2.out'}, .8);
     }
-
-    ScrollTrigger.refresh();
   }
 
   function addResizeListeners(){
@@ -450,14 +458,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     drawnFrame = -1;
     flushPaint();
 
-    if(!sequenceTimeline){
-      try { initScrollSequence(); }
-      catch(error) {
-        activateStatic('Image fixe · animation indisponible');
-        return;
-      }
-    }
-    addResizeListeners();
     schedulePaint();
     lease.update();
   }

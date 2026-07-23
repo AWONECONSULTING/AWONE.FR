@@ -1,5 +1,10 @@
 /* ── Animations GSAP (bundle local : fonctionne aussi hors-ligne) ── */
 import { gsap, ScrollTrigger } from './motion.js';
+/* Les deux contrôleurs de pin sont évalués dès le chargement du bundle.
+   Seuls leurs moteurs légers arrivent ici : les frames restent chargées
+   à distance par leurs IntersectionObserver respectifs. */
+import './immersive-sequence.js';
+import './method-sequence.js';
 
 /* ── Défilement principal : l'inertie Lenis reste réservée aux appareils
      de bureau précis. Le tactile conserve son scroll natif, plus stable et
@@ -178,9 +183,6 @@ import { gsap, ScrollTrigger } from './motion.js';
       started = true;
       if(observer) observer.disconnect();
       importer()
-        .then(function(){
-          requestAnimationFrame(function(){ ScrollTrigger.refresh(); });
-        })
         .catch(function(){
           if(typeof fallback === 'function') fallback(target);
         });
@@ -200,35 +202,8 @@ import { gsap, ScrollTrigger } from './motion.js';
     observer.observe(target);
   }
 
-  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var saveData = Boolean(navigator.connection && navigator.connection.saveData);
-
-  /* Le HTML reste statique et complet sans JavaScript. Avant le premier
-     affichage, le runtime réserve les hauteurs des deux récits : aucun CLS
-     lorsque leurs modules différés arrivent ensuite. */
-  if(!reduced && !saveData){
-    var immersive = document.querySelector('.immersive-sequence');
-    var progressiveMethod = document.getElementById('methode');
-    if(immersive){
-      immersive.classList.remove('is-static');
-      immersive.classList.add('is-booting');
-    }
-    if(progressiveMethod){
-      progressiveMethod.classList.remove('is-static');
-      progressiveMethod.classList.add('is-booting');
-    }
-  }
-
   loadNear('#brands-track', function(){ return import('./brands-carousel.js'); }, 1.4);
-  loadNear('.immersive-sequence', function(){ return import('./immersive-sequence.js'); }, 2.2, function(section){
-    section.classList.remove('is-booting');
-    section.classList.add('is-static', 'is-loaded');
-  });
   loadNear('#situationsCarousel', function(){ return import('./situations-carousel.js'); }, 2);
-  loadNear('#methode', function(){ return import('./method-sequence.js'); }, 2.4, function(section){
-    section.classList.remove('is-booting');
-    section.classList.add('is-static');
-  });
   loadNear('#tv', function(){ return import('./offer-video.js'); }, 1.8);
 })();
 

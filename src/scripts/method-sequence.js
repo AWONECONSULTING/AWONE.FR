@@ -1,8 +1,8 @@
 import { gsap, ScrollTrigger } from './motion.js';
 import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence.js';
 
-/* Méthode immersive : toutes les frames du lot actif sont téléchargées et
-   décodées avant le scrub. Le lot entier est libéré dès que la section est
+/* Méthode immersive : le pin et le récit DOM existent avant les images, puis
+   le lot actif chauffe à distance. Le lot est libéré dès que la section est
    loin ; l'arbitre partagé libère aussi l'autre séquence avant ce chargement. */
 (function(){
   var section = document.getElementById('methode');
@@ -250,6 +250,16 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   section.classList.add('is-runtime');
   section.style.setProperty('--method-scroll-height', ((CONFIG.scrollScreens + 1) * 100) + 'svh');
 
+  /* La structure épinglée est installée avant le warm-up des images. La
+     constellation et le poster restent fonctionnels pendant le chargement,
+     sans insertion tardive d'un pin-spacer sous le doigt de l'utilisateur. */
+  try { initScrollSequence(); }
+  catch(error) {
+    activateStatic('Animation indisponible : les cinq étapes restent affichées.');
+    return;
+  }
+  addResizeListeners();
+
   if('IntersectionObserver' in window){
     visibilityObserver = new IntersectionObserver(function(entries){
       entries.forEach(function(entry){ setMethodVisible(entry.isIntersecting); });
@@ -462,7 +472,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
         }
       }
     });
-    ScrollTrigger.refresh();
   }
 
   function addResizeListeners(){
@@ -486,14 +495,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     paintedProgress = -1;
     flushPaint();
 
-    if(!scrollTween){
-      try { initScrollSequence(); }
-      catch(error) {
-        activateStatic('Animation indisponible : les cinq étapes restent affichées.');
-        return;
-      }
-    }
-    addResizeListeners();
     schedulePaint();
     lease.update();
   }
