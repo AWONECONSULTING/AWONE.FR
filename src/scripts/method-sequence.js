@@ -11,8 +11,9 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var stage = section.querySelector('[data-method-stage]');
   var canvas = section.querySelector('[data-method-canvas]');
   var poster = section.querySelector('[data-method-poster]');
-  var posterAvif = section.querySelector('[data-method-poster-avif]');
-  var posterWebp = section.querySelector('[data-method-poster-webp]');
+  var posterSources = Array.prototype.slice.call(
+    section.querySelectorAll('[data-method-poster-source]')
+  );
   var loaderLabel = section.querySelector('[data-method-loader-label]');
   var loaderValue = section.querySelector('[data-method-loader-value]');
   var loaderTrack = section.querySelector('[data-method-loader-track]');
@@ -55,10 +56,15 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var frameDirectory = useMobileFrames ? CONFIG.mobileDirectory : CONFIG.desktopDirectory;
   var sourceWidth = useMobileFrames ? 720 : 1440;
   var sourceHeight = useMobileFrames ? 405 : 810;
+  var entryFrameEnd = Math.max(
+    1,
+    Math.round((frameCount - 1) / (CONFIG.scrollScreens + 1))
+  );
 
   var context = null;
   var lifecycleObserver = null;
   var visibilityObserver = null;
+  var entryTrigger = null;
   var scrollTween = null;
   var resizeTimer = 0;
   var resizeForce = false;
@@ -77,6 +83,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var lastRefreshWidth = 0;
   var lastRefreshHeight = 0;
   var sequenceActive = false;
+  var entryActive = false;
   var pinActive = false;
   var disabled = false;
   var listenersReady = false;
@@ -91,12 +98,9 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function hydratePoster(){
-    if(posterAvif && posterAvif.dataset.posterSrcset){
-      posterAvif.srcset = posterAvif.dataset.posterSrcset;
-    }
-    if(posterWebp && posterWebp.dataset.posterSrcset){
-      posterWebp.srcset = posterWebp.dataset.posterSrcset;
-    }
+    posterSources.forEach(function(source){
+      if(source.dataset.posterSrcset) source.srcset = source.dataset.posterSrcset;
+    });
     if(poster && poster.dataset.posterSrc) poster.src = poster.dataset.posterSrc;
   }
 
@@ -208,9 +212,14 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   function activateStatic(message){
     disabled = true;
     sequenceActive = false;
+    entryActive = false;
     pinActive = false;
     if(lifecycleObserver) lifecycleObserver.disconnect();
     if(visibilityObserver) visibilityObserver.disconnect();
+    if(entryTrigger){
+      entryTrigger.kill();
+      entryTrigger = null;
+    }
     if(scrollTween){
       if(scrollTween.scrollTrigger) scrollTween.scrollTrigger.kill();
       scrollTween.kill();
@@ -471,8 +480,37 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function initScrollSequence(){
-    var playhead = {frame:0};
+    var playhead = {frame:entryFrameEnd};
     section.classList.add('is-scroll-ready');
+
+    /* Le premier viewport de déplacement appartient déjà à la séquence :
+       les frames 1 → entryFrameEnd avancent pendant que la scène entre dans
+       l'écran. Le pin reprend ensuite exactement à cette frame, sans poster
+       intermédiaire ni retour en arrière. */
+    entryTrigger = ScrollTrigger.create({
+      trigger:section,
+      start:'top bottom',
+      end:'top top',
+      invalidateOnRefresh:true,
+      onUpdate:function(self){
+        entryActive = self.isActive;
+        if(pinActive) return;
+        targetProgress = 0;
+        setTargetFrame(self.progress * entryFrameEnd);
+        if(entryActive && !sequenceActive && store.isPlayable()){
+          activateSequence();
+        }
+      },
+      onToggle:function(self){
+        entryActive = self.isActive;
+        if(entryActive && store.isPlayable()) activateSequence();
+      },
+      onRefresh:function(self){
+        entryActive = self.isActive;
+        if(!pinActive) setTargetFrame(self.progress * entryFrameEnd);
+      }
+    });
+
     scrollTween = gsap.to(playhead, {
       frame:frameCount - 1,
       ease:'none',
@@ -492,7 +530,9 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
         onUpdate:function(self){
           targetProgress = self.progress;
           if(Math.abs(self.progress - lastRawProgress) > .08){
-            setTargetFrame(self.progress * (frameCount - 1));
+            setTargetFrame(
+              entryFrameEnd + self.progress * (frameCount - 1 - entryFrameEnd)
+            );
           }
           lastRawProgress = self.progress;
           schedulePaint();
@@ -505,7 +545,9 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
         onRefresh:function(self){
           targetProgress = self.progress;
           lastRawProgress = self.progress;
-          setTargetFrame(self.progress * (frameCount - 1));
+          setTargetFrame(
+            entryFrameEnd + self.progress * (frameCount - 1 - entryFrameEnd)
+          );
           layoutConnectors();
           schedulePaint();
         }
@@ -524,7 +566,15 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function activateSequence(){
-    if(disabled || !pinActive || !store.isPlayable()) return;
+    if(
+      disabled ||
+      (!entryActive && !pinActive) ||
+      !store.isPlayable()
+    ) return;
+    if(sequenceActive){
+      schedulePaint();
+      return;
+    }
     sequenceActive = true;
     section.classList.remove('is-released');
     section.classList.remove('is-canvas-ready');
@@ -549,11 +599,11 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’expérience';
     if(store.isPlayable()){
-      if(pinActive) activateSequence();
+      if(entryActive || pinActive) activateSequence();
       return;
     }
     store.load().then(function(ready){
-      if(ready && pinActive) requestAnimationFrame(function(){
+      if(ready && (entryActive || pinActive)) requestAnimationFrame(function(){
         requestAnimationFrame(activateSequence);
       });
     }).catch(function(){

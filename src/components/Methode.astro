@@ -62,22 +62,34 @@ const steps = [
     <!-- Poster permanent : le canvas peut être purgé sans laisser de vide. -->
     <picture class="method-cinematic-poster" aria-hidden="true">
       <source
-        data-method-poster-avif
-        data-poster-srcset="/frames/method/poster-mobile.avif"
+        data-method-poster-source
+        data-poster-srcset="/frames/method/mobile-optimized-avif/frame_0001.avif"
+        media="(max-width: 767px), (max-width: 932px) and (max-height: 560px) and (pointer: coarse)"
         type="image/avif"
       >
       <source
-        data-method-poster-webp
-        data-poster-srcset="/frames/method/poster-mobile.webp"
+        data-method-poster-source
+        data-poster-srcset="/frames/method/desktop-avif/frame_0001.avif"
+        type="image/avif"
+      >
+      <source
+        data-method-poster-source
+        data-poster-srcset="/frames/method/mobile-optimized/frame_0001.webp"
+        media="(max-width: 767px), (max-width: 932px) and (max-height: 560px) and (pointer: coarse)"
+        type="image/webp"
+      >
+      <source
+        data-method-poster-source
+        data-poster-srcset="/frames/method/desktop/frame_0001.webp"
         type="image/webp"
       >
       <img
         data-method-poster
         src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
-        data-poster-src="/frames/method/poster-mobile.webp"
+        data-poster-src="/frames/method/mobile-optimized/frame_0001.webp"
         alt=""
-        width="480"
-        height="270"
+        width="720"
+        height="405"
         loading="lazy"
         decoding="async"
         fetchpriority="low"
@@ -86,10 +98,10 @@ const steps = [
     <noscript>
       <img
         class="method-cinematic-poster method-cinematic-poster-noscript"
-        src="/frames/method/poster-mobile.webp"
+        src="/frames/method/desktop/frame_0001.webp"
         alt=""
-        width="480"
-        height="270"
+        width="1440"
+        height="810"
         aria-hidden="true"
       >
     </noscript>
