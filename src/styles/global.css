@@ -388,7 +388,6 @@ body.menu-open{overflow:hidden}
     radial-gradient(90% 70% at 105% 105%,rgba(51,79,215,.24),transparent 62%),
     linear-gradient(180deg,rgba(14,12,18,.28),rgba(18,14,27,.68));
 }
-.method-cinematic.is-runtime .method-veil--entry{opacity:var(--method-entry-opacity,1)}
 .method-cinematic.is-runtime .method-veil--exit{opacity:var(--method-exit-opacity,0)}
 .method-scroll-hint{
   position:absolute;z-index:5;left:50%;bottom:clamp(18px,3vh,30px);

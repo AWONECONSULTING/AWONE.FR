@@ -38,7 +38,6 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     mobileDpr:1.5,
     desktopPixelBudget:3200000,
     mobilePixelBudget:1800000,
-    entryEnd:.06,
     exitStart:.92,
     stepsEnd:.9,
     resizeDelay:320
@@ -259,6 +258,10 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     return;
   }
 
+  /* Le poster léger doit être prêt avant que le premier pixel de la section
+     entre dans le viewport. Son `loading="lazy"` conserve le chargement
+     différé, sans attendre le warm-up plus lourd des frames. */
+  hydratePoster();
   section.classList.remove('is-static', 'is-booting');
   section.classList.add('is-runtime');
   section.style.setProperty('--method-scroll-height', ((CONFIG.scrollScreens + 1) * 100) + 'svh');
@@ -423,16 +426,12 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     var clamped = Math.max(0, Math.min(1, progress));
     var stepProgress = Math.min(1, clamped / CONFIG.stepsEnd);
     var stepIndex = Math.min(nodes.length - 1, Math.floor(stepProgress * nodes.length));
-    var entryOpacity = clamped < CONFIG.entryEnd
-      ? (CONFIG.entryEnd - clamped) / CONFIG.entryEnd
-      : 0;
     var exitOpacity = clamped > CONFIG.exitStart
       ? (clamped - CONFIG.exitStart) / (1 - CONFIG.exitStart)
       : 0;
 
     setStep(stepIndex);
     section.classList.toggle('has-started', clamped > .025);
-    section.style.setProperty('--method-entry-opacity', entryOpacity.toFixed(4));
     section.style.setProperty('--method-exit-opacity', exitOpacity.toFixed(4));
   }
 
