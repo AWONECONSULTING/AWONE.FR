@@ -6,6 +6,85 @@ import { gsap, ScrollTrigger } from './motion.js';
 import './immersive-sequence.js';
 import './method-sequence.js';
 
+/* Chrome peut restaurer la page avant que ScrollTrigger ait fini d'installer
+   les spacers. On ne reprend la main que lors d'un rechargement effectué au
+   milieu de l'un des deux pins ; toute autre position reste native. */
+(function(){
+  var STORAGE_KEY = 'awone:pinned-scroll-restore';
+  var targets = [
+    ['immersion', '[data-immersive-stage]'],
+    ['methode', '[data-method-stage]']
+  ];
+
+  function sectionRange(id, stageSelector){
+    var section = document.getElementById(id);
+    var stage = section && section.querySelector(stageSelector);
+    if(!section || !stage) return null;
+    var start = window.scrollY + section.getBoundingClientRect().top;
+    return {
+      start:start,
+      end:start + Math.max(1, section.offsetHeight - stage.offsetHeight)
+    };
+  }
+
+  function isInsidePinnedRange(y){
+    return targets.some(function(target){
+      var range = sectionRange(target[0], target[1]);
+      return range && y >= range.start && y <= range.end;
+    });
+  }
+
+  window.addEventListener('pagehide', function(){
+    try {
+      var y = Math.round(window.scrollY);
+      if(!isInsidePinnedRange(y)){
+        sessionStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        path:location.pathname + location.search,
+        y:y,
+        savedAt:Date.now()
+      }));
+    } catch(error){
+      /* La restauration native reste disponible si le stockage est bloqué. */
+    }
+  });
+
+  var navigation = performance.getEntriesByType('navigation')[0];
+  if(!navigation || navigation.type !== 'reload') return;
+
+  var saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null'); }
+  catch(error){ saved = null; }
+  if(
+    !saved ||
+    saved.path !== location.pathname + location.search ||
+    !Number.isFinite(saved.y) ||
+    !Number.isFinite(saved.savedAt) ||
+    Date.now() - saved.savedAt > 30000
+  ) return;
+
+  function restorePinnedScroll(){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        if(!isInsidePinnedRange(saved.y)) return;
+        if(window.__awoneLenis){
+          window.__awoneLenis.scrollTo(saved.y, {immediate:true, force:true});
+        } else {
+          window.scrollTo({top:saved.y, behavior:'instant'});
+        }
+        ScrollTrigger.update();
+        try { sessionStorage.removeItem(STORAGE_KEY); }
+        catch(error){ /* Aucun impact fonctionnel. */ }
+      });
+    });
+  }
+
+  if(document.readyState === 'complete') restorePinnedScroll();
+  else window.addEventListener('load', restorePinnedScroll, {once:true});
+})();
+
 /* ── Défilement principal : l'inertie Lenis reste réservée aux appareils
      de bureau précis. Le tactile conserve son scroll natif, plus stable et
      moins coûteux que la synchronisation artificielle de chaque geste. ── */
