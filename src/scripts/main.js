@@ -98,11 +98,30 @@ import './method-sequence.js';
   import('lenis').then(function(module){
     var Lenis = module.default || module.Lenis;
     if(!Lenis) return;
+    function isCinematicWheel(event){
+      if(!event || !event.type || event.type.indexOf('wheel') < 0) return false;
+      var path = typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : [event.target];
+      return path.some(function(node){
+        return node instanceof Element && Boolean(
+          node.closest('[data-immersive-stage],[data-method-stage]')
+        );
+      });
+    }
+
     var lenis = new Lenis({
       lerp:.09,
       smoothWheel:true,
       syncTouch:false,
       wheelMultiplier:.95,
+      virtualScroll:function(data){
+        /* Un stage épinglé masque visuellement la distance parcourue et peut
+           donner une impression d'enfermement à la molette. Une impulsion
+           légèrement renforcée dans ces deux scènes seulement permet de les
+           traverser vite, tout en conservant l'amortissement Lenis. */
+        if(isCinematicWheel(data.event)) data.deltaY *= 1.25;
+      },
       anchors:{offset:-72},
       stopInertiaOnNavigate:true,
       prevent:function(node){
