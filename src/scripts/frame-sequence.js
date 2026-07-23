@@ -245,8 +245,8 @@ export function createDecodedFrameStore(options){
     sources[index] = {
       blob:blob,
       bytes:blob.size,
-      image:decoded.image,
-      objectUrl:decoded.objectUrl,
+      image:decoded ? decoded.image : null,
+      objectUrl:decoded ? decoded.objectUrl : '',
       touched:++touchCounter
     };
     warmedCount += 1;
@@ -310,7 +310,7 @@ export function createDecodedFrameStore(options){
     cancelRuntimeQueue();
     disposeAll();
 
-    async function runWorkers(queue, tolerateFailures){
+    async function runWorkers(queue, tolerateFailures, decodeImages){
       var cursor = 0;
       var failures = 0;
       var workerCount = Math.min(
@@ -322,7 +322,7 @@ export function createDecodedFrameStore(options){
           var index = queue[cursor++];
           try {
             var blob = await fetchBlob(index, selectedFormat, signal, 0);
-            var decoded = await decodeBlob(blob, token);
+            var decoded = decodeImages ? await decodeBlob(blob, token) : null;
             commitWarm(index, blob, decoded, token);
           } catch(error) {
             if(isCancelled(error) || token !== generation) throw error;
@@ -341,7 +341,10 @@ export function createDecodedFrameStore(options){
     }
 
     function loadRemaining(queue){
-      backgroundPromise = runWorkers(queue, true)
+      /* Les frames restantes sont gardées compressées. Les décoder ici ne
+         ferait que créer puis évincer des surfaces RGBA avant leur affichage,
+         au détriment des animations qui précèdent la section. */
+      backgroundPromise = runWorkers(queue, true, false)
         .then(function(failures){
           if(token !== generation) throw staleError();
           phase = failures ? 'partial' : 'ready';
@@ -396,7 +399,7 @@ export function createDecodedFrameStore(options){
       var queue = orderedIndexes();
       var initialNeeded = Math.max(0, playableCount - warmedCount);
       var initialQueue = queue.splice(0, initialNeeded);
-      await runWorkers(initialQueue, false);
+      await runWorkers(initialQueue, false, true);
       if(token !== generation) throw staleError();
 
       phase = 'playable';
