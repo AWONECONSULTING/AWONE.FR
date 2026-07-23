@@ -54,19 +54,21 @@ de la page.
 ## Cycle mémoire
 
 1. Le contrôleur installe immédiatement le ScrollTrigger et son `pin-spacer`.
-2. L’`IntersectionObserver` interne réclame le bail mémoire à environ 1,5 écran
-   et hydrate le poster.
+2. L’`IntersectionObserver` interne réclame le bail mémoire lorsque la section
+   arrive à 0,35 écran au-delà du viewport et hydrate le poster.
 3. L’arbitre tient compte du sens de lecture lorsque les deux marges de
    préchargement se chevauchent, puis libère l’autre séquence avant toute
    nouvelle allocation.
-4. Un premier voisinage de 12 frames mobile ou 15 desktop est téléchargé et
-   passe par `img.decode()` ; le canvas devient alors jouable.
-5. Le reste du lot chauffe en arrière-plan pendant que le loader continue
-   jusqu’à 100 %.
-6. Les blobs compressés restent disponibles, mais seul un voisinage décodé
-   borné suit la frame cible. Conserver les 181 surfaces RGBA de l’ascension
-   dépasserait 1 Gio et reproduirait la purge iOS que le correctif doit éviter.
-7. Lorsque la section s’éloigne, requêtes, blobs, URLs objet et images sont
+4. Un premier voisinage de 6 frames mobile ou 8 desktop est téléchargé et
+   passe par `img.decode()`.
+5. Le reste du lot est téléchargé sous forme compressée pendant que le loader
+   continue jusqu’à 100 %, sans créer de surfaces RGBA inutiles.
+6. Le canvas reste à `1 × 1` jusqu'à ce que le pin soit réellement actif.
+7. Les blobs compressés restent disponibles, mais seul un voisinage décodé
+   borné suit ensuite la frame cible à la demande. Conserver les 181 surfaces
+   RGBA de l’ascension dépasserait 1 Gio et reproduirait la purge iOS que le
+   correctif doit éviter.
+8. Lorsque la section s’éloigne, requêtes, blobs, URLs objet et images sont
    supprimés ; le canvas est effacé puis réduit à 1 × 1. Le poster reste visible.
 
 Plafonds résidents actuels : 16 images pour l’ascension desktop, 22 mobile, 20 pour la méthode desktop et 32 mobile. Le gestionnaire de scroll ne dessine rien : il ne fait que modifier une cible entière. Le dessin et les demandes de voisinage sont coalescés par `requestAnimationFrame`.

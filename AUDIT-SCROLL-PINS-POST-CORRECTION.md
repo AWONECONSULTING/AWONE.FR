@@ -1,8 +1,9 @@
 # Re-audit des séquences épinglées — AWONE
 
-Audit final réalisé le 23 juillet 2026 sur le build statique servi par
+Audit final réalisé le 23 juillet 2026, puis complété le 24 juillet après le
+contrôle du scroll précédant l'immersion, sur le build statique servi par
 `astro preview`. Référence avant correction : commit `4e8d35d`. Référence
-finale testée : `217b936`.
+fonctionnelle finale testée : `738a0e9`.
 
 ## Verdict
 
@@ -34,8 +35,8 @@ Trois ScrollTrigger seulement sont instanciés.
 | Déclencheur | Localisation | Options constatées |
 |---|---|---|
 | Hero morph | `src/scripts/main.js:191-199` | `pin`: absent ; `pinSpacing`: absent ; `pinType`: absent ; `anticipatePin`: absent ; `scrub`: `0.42` desktop / `0.62` mobile ; `snap`: absent ; `start: "top top"` ; `end: "bottom bottom"` ; `invalidateOnRefresh: true` ; `fastScrollEnd`: absent ; `preventOverlaps`: absent |
-| Ascension | `src/scripts/immersive-sequence.js:394-418` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.65` desktop / `0.55` mobile ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
-| Méthode | `src/scripts/method-sequence.js:459-486` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
+| Ascension | `src/scripts/immersive-sequence.js:396-423` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.65` desktop / `0.55` mobile ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
+| Méthode | `src/scripts/method-sequence.js:461-492` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
 
 Les valeurs éditables sont conservées dans
 `src/components/ImmersiveSequence.astro:14-22` et
@@ -52,7 +53,7 @@ Constat :
 - aucun `snap`, `snapTo`, `directional`, `duration` de snap ou `inertia` dans
   les trois ScrollTrigger ;
 - `snap: {frame: 1}` existe sur les tweens des playheads
-  (`immersive-sequence.js:425` et `method-sequence.js:457`) ;
+  (`immersive-sequence.js:431` et `method-sequence.js:459`) ;
 - ce snap arrondit seulement un numéro de frame. Il ne déplace jamais la page ;
 - le `scroll-snap-type: x proximity` de `global.css:1213` appartient au
   carrousel horizontal « Situations » et n'agit pas sur l'axe vertical.
@@ -106,18 +107,28 @@ décodage du lot entier. L'insertion tardive du `pin-spacer`, suivie d'un
 - les deux contrôleurs sont importés dès `main.js:6-7` ;
 - chaque `initScrollSequence()` est exécuté avant toute requête de frame
   (`immersive-sequence.js:274-282`, `method-sequence.js:263-271`) ;
-- premier lot jouable : 12 frames mobile ou 15 desktop ;
+- premier lot jouable : 6 frames mobile ou 8 desktop ;
 - le reste chauffe en arrière-plan ;
 - le premier lot est centré sur la position réelle du playhead, y compris
   après restauration à mi-page ;
+- les frames restantes sont conservées sous forme de blobs compressés et ne
+  sont décodées qu'à proximité du playhead ;
+- le warm-up commence à 0,35 écran au-delà du viewport, au lieu de 1,5 ;
+- le canvas reste à `1 × 1` tant que le pin n'est pas réellement actif ;
 - le loader continue de 0 à 100 % pendant le chargement de fond ;
 - aucun `ScrollTrigger.refresh()` après `onPlayable` ou `onReady` ;
 - les posters et le logo de sortie restent différés jusqu'à l'approche de la
   section.
 
-Test réseau lent : à l'activation mobile, le canvas est devenu jouable à
-`12/91` frames, puis le lot a continué jusqu'à `91/91` sans exception et sans
-insertion tardive de spacer.
+Test de suivi du 24 juillet : avant correction complémentaire, les 91 frames
+mobiles étaient toutes décodées entre `scrollY 852` et `1256`, alors que
+l'immersion était encore à plus de deux écrans. Après correction :
+
+- premier fetch mobile à `scrollY 1828` ;
+- 91 blobs chargés, mais seulement 6 images décodées avant le pin ;
+- mémoire décodée avant le pin : 21,2 Mio au lieu d'environ 77,9 Mio ;
+- canvas maintenu à `1 × 1` jusqu'à l'entrée ;
+- desktop : 8 images décodées sur 181, canvas `1 × 1`, zéro tâche longue.
 
 Impact : bloquant avant correction, corrigé.
 
@@ -126,7 +137,8 @@ Impact : bloquant avant correction, corrigé.
 Constat final :
 
 - rendu `canvas.drawImage`, jamais un swap de `<img src>` ni une vidéo seekée ;
-- `img.decode()` est exécuté en amont dans les workers asynchrones ;
+- `img.decode()` est exécuté dans les workers asynchrones pour le petit lot
+  initial, puis à la demande autour du playhead ;
 - aucun décodage synchrone dans `ScrollTrigger.onUpdate` ;
 - `onUpdate` modifie seulement une cible ;
 - le dessin est coalescé par `requestAnimationFrame` ;
@@ -191,8 +203,8 @@ Impact : aggravant avant correction, corrigé.
 
 | Fichier | Modification | Justification |
 |---|---|---|
-| `src/scripts/frame-sequence.js` | Premier lot jouable, chargement de fond, cible prioritaire, décodage async et cache borné | Retirer l'attente bloquante de tout le lot et le décodage du chemin critique |
-| `src/scripts/immersive-sequence.js` | Pin immédiat, distance réelle, scrub amorti conservé, `anticipatePin`, `fastScrollEnd`, rendu dédupliqué, resize différé, visuels différés | Supprimer le spacer tardif, le décalage `svh/innerHeight`, le rattrapage de sortie et les refresh mobiles |
+| `src/scripts/frame-sequence.js` | Petit lot jouable, fond compressé, cible prioritaire, décodage à la demande et cache borné | Retirer l'attente bloquante et les dizaines de décodages inutiles pendant les sections précédentes |
+| `src/scripts/immersive-sequence.js` | Pin immédiat, distance réelle, scrub amorti conservé, `anticipatePin`, `fastScrollEnd`, rendu dédupliqué, resize différé, warm-up rapproché et canvas activé uniquement dans le pin | Supprimer le spacer tardif, le décalage `svh/innerHeight`, le rattrapage de sortie, les refresh mobiles et le travail graphique hors écran |
 | `src/scripts/method-sequence.js` | Même stratégie, sans changer les cinq étapes ni leur label | Garantir le même comportement sur la seconde séquence |
 | `src/scripts/main.js` | Contrôleurs importés immédiatement ; restauration limitée aux deux plages pinned | Créer les pins avant les frames et préserver un reload à mi-page |
 | `src/styles/global.css` | Le loader méthode reste visible jusqu'à `is-loaded` | Conserver la progression 0 → 100 % pendant le chargement de fond |
@@ -206,6 +218,8 @@ Impact : aggravant avant correction, corrigé.
 5. `2843461` — `fix(scroll): finaliser les sequences lors des sorties rapides`
 6. `f886542` — `fix(scroll): restaurer la position au milieu des pins`
 7. `217b936` — `perf(frames): differer les visuels jusqu a l approche`
+8. `9a39440` — `perf(frames): decoder le fond uniquement a la demande`
+9. `738a0e9` — `perf(frames): rapprocher le warmup des sections 3d`
 
 Chaque changement conceptuel peut être testé ou annulé séparément.
 
@@ -220,6 +234,7 @@ Chaque changement conceptuel peut être testé ou annulé séparément.
 | 5. CLS = 0 aux frontières | **OK** | Zéro `layout-shift` aux entrées et sorties ; Lighthouse global : 0,005 mobile, 0 desktop |
 | 6. Performance mobile et INP | **OK local / production à confirmer** | Lighthouse mobile 98, identique à la dernière référence de production, TBT 0 ms ; événements tactiles max 40 ms, délai max 2,9 ms |
 | 7. Reload à mi-page | **OK** | Desktop méthode et mobile ascension : `deltaY = 0`, même frame avant/après |
+| 8. Scroll précédant les sections 3D | **OK** | Mobile et desktop CPU ×4 : zéro tâche longue, zéro inversion ; 6/91 et 8/181 images seulement décodées, canvas `1 × 1` avant l'entrée |
 
 La passe PageSpeed Insights publique reste à refaire après déploiement, car
 localhost ne mesure ni CDN ni cache Vercel. L'INP de terrain nécessite des
@@ -242,6 +257,10 @@ données réelles ; la mesure locale Event Timing reste très inférieure à
 - dernière frame atteinte environ 12 ms après une sortie rapide ;
 - scroll rapide desktop et tactile : aucune valeur de scroll ne repart en
   arrière.
+- ascension mobile après décodage à la demande : 91/91 frames distinctes ;
+- méthode mobile : 121/121 frames distinctes et cinq changements d'étape ;
+- Lighthouse mobile après le correctif du pré-scroll : 98/100, LCP 2,0 s,
+  TBT 0 ms, CLS 0,005, 175,1 Kio.
 
 Le build garde deux avertissements déjà présents sur les chunks différés HLS
 et DASH ; aucun nouvel avertissement n'a été introduit.
