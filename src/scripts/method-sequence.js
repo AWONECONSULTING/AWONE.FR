@@ -466,6 +466,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
         pinType:'transform',
         scrub:CONFIG.scrub,
         anticipatePin:1,
+        fastScrollEnd:true,
         invalidateOnRefresh:true,
         onUpdate:function(self){
           targetProgress = self.progress;

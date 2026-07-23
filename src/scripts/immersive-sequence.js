@@ -402,6 +402,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
         pinType:'transform',
         scrub:scrub,
         anticipatePin:1,
+        fastScrollEnd:true,
         invalidateOnRefresh:true,
         onUpdate:function(self){
           if(Math.abs(self.progress - lastRawProgress) > .08){
