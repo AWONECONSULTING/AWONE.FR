@@ -31,7 +31,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     scrollScreens:Math.max(1, parseFloat(section.dataset.scrollScreens) || 5.8),
     scrub:Math.max(0, parseFloat(section.dataset.scrub) || .6),
     mobileBreakpoint:767,
-    lifecycleScreens:1.5,
+    lifecycleScreens:.35,
     desktopConcurrency:6,
     mobileConcurrency:4,
     maxDpr:2,
@@ -78,6 +78,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var lastRefreshWidth = 0;
   var lastRefreshHeight = 0;
   var sequenceActive = false;
+  var pinActive = false;
   var disabled = false;
   var listenersReady = false;
   var lifecyclePixels = Math.round(window.innerHeight * CONFIG.lifecycleScreens);
@@ -128,7 +129,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     concurrency:useMobileFrames ? CONFIG.mobileConcurrency : CONFIG.desktopConcurrency,
     runtimeConcurrency:useMobileFrames ? 2 : 3,
     maxDecoded:useMobileFrames ? 32 : 20,
-    playableCount:useMobileFrames ? 12 : 15,
+    playableCount:useMobileFrames ? 6 : 8,
     formats:['avif', 'webp'],
     frameUrl:frameUrl,
     priority:function(count){
@@ -206,6 +207,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   function activateStatic(message){
     disabled = true;
     sequenceActive = false;
+    pinActive = false;
     if(lifecycleObserver) lifecycleObserver.disconnect();
     if(visibilityObserver) visibilityObserver.disconnect();
     if(scrollTween){
@@ -475,7 +477,11 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
           lastRawProgress = self.progress;
           schedulePaint();
         },
-        onToggle:function(self){ setMethodVisible(self.isActive); },
+        onToggle:function(self){
+          pinActive = self.isActive;
+          setMethodVisible(self.isActive);
+          if(pinActive && store.isPlayable()) activateSequence();
+        },
         onRefresh:function(self){
           targetProgress = self.progress;
           lastRawProgress = self.progress;
@@ -498,7 +504,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function activateSequence(){
-    if(disabled || !store.isPlayable()) return;
+    if(disabled || !pinActive || !store.isPlayable()) return;
     sequenceActive = true;
     section.classList.remove('is-released');
     section.classList.remove('is-canvas-ready');
@@ -523,11 +529,11 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’expérience';
     if(store.isPlayable()){
-      activateSequence();
+      if(pinActive) activateSequence();
       return;
     }
     store.load().then(function(ready){
-      if(ready) requestAnimationFrame(function(){
+      if(ready && pinActive) requestAnimationFrame(function(){
         requestAnimationFrame(activateSequence);
       });
     }).catch(function(){

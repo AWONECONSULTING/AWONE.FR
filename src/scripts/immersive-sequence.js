@@ -35,7 +35,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     mobileScrollScreens:Math.max(1, parseFloat(section.dataset.mobileScrollScreens) || 2.4),
     desktopScrub:Math.max(0, parseFloat(section.dataset.desktopScrub) || .65),
     mobileScrub:Math.max(0, parseFloat(section.dataset.mobileScrub) || .55),
-    lifecycleScreens:1.5,
+    lifecycleScreens:.35,
     desktopConcurrency:6,
     mobileConcurrency:4,
     maxDpr:2,
@@ -78,6 +78,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   var lastRefreshWidth = 0;
   var lastRefreshHeight = 0;
   var sequenceActive = false;
+  var pinActive = false;
   var disabled = false;
   var listenersReady = false;
   var lifecyclePixels = Math.round(window.innerHeight * CONFIG.lifecycleScreens);
@@ -136,7 +137,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     concurrency:useMobileFrames ? CONFIG.mobileConcurrency : CONFIG.desktopConcurrency,
     runtimeConcurrency:useMobileFrames ? 2 : 3,
     maxDecoded:useMobileFrames ? 22 : 16,
-    playableCount:useMobileFrames ? 12 : 15,
+    playableCount:useMobileFrames ? 6 : 8,
     formats:['avif', 'webp'],
     frameUrl:frameUrl,
     priority:function(count){
@@ -215,6 +216,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   function activateStatic(message){
     disabled = true;
     sequenceActive = false;
+    pinActive = false;
     if(lifecycleObserver) lifecycleObserver.disconnect();
     if(visibilityObserver) visibilityObserver.disconnect();
     if(sequenceTimeline){
@@ -408,7 +410,11 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
           }
           lastRawProgress = self.progress;
         },
-        onToggle:function(self){ setImmersiveVisible(self.isActive); },
+        onToggle:function(self){
+          pinActive = self.isActive;
+          setImmersiveVisible(self.isActive);
+          if(pinActive && store.isPlayable()) activateSequence();
+        },
         onRefresh:function(self){
           lastRawProgress = self.progress;
           setTargetFrame(self.progress * (frameCount - 1));
@@ -461,7 +467,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function activateSequence(){
-    if(disabled || !store.isPlayable()) return;
+    if(disabled || !pinActive || !store.isPlayable()) return;
     sequenceActive = true;
     section.classList.remove('is-released');
     section.classList.remove('is-canvas-ready');
@@ -486,11 +492,11 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     section.classList.add('is-loading');
     if(loaderLabel) loaderLabel.textContent = 'Décodage de l’ascension';
     if(store.isPlayable()){
-      activateSequence();
+      if(pinActive) activateSequence();
       return;
     }
     store.load().then(function(ready){
-      if(ready) requestAnimationFrame(function(){
+      if(ready && pinActive) requestAnimationFrame(function(){
         requestAnimationFrame(activateSequence);
       });
     }).catch(function(){
