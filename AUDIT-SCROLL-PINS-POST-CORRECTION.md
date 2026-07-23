@@ -1,9 +1,10 @@
 # Re-audit des séquences épinglées — AWONE
 
 Audit final réalisé le 23 juillet 2026, puis complété le 24 juillet après le
-contrôle du scroll précédant l'immersion, sur le build statique servi par
-`astro preview`. Référence avant correction : commit `4e8d35d`. Référence
-fonctionnelle finale testée : `738a0e9`.
+contrôle du scroll précédant l'immersion et le test d'une molette placée
+directement sur les canvas, sur le build statique servi par `astro preview`.
+Référence avant correction : commit `4e8d35d`. Référence fonctionnelle finale
+testée : `2b75bd5`.
 
 ## Verdict
 
@@ -19,6 +20,10 @@ design, les textes, les CTA ni les autres sections :
 5. les variations de hauteur dues à la barre d'URL mobile sont ignorées ;
 6. une sortie rapide finalise immédiatement le scrub ;
 7. le rechargement à mi-pin retrouve exactement la position et la frame.
+8. les décodages devenus obsolètes lors d'un geste rapide sont écartés et le
+   canvas affiche la frame décodée la plus proche sans repartir en arrière ;
+9. la molette est accélérée de 25 % uniquement lorsque son pointeur se trouve
+   dans l'un des deux stages 3D, sans changer le scroll des autres sections.
 
 ## Environnement réellement audité
 
@@ -34,9 +39,9 @@ Trois ScrollTrigger seulement sont instanciés.
 
 | Déclencheur | Localisation | Options constatées |
 |---|---|---|
-| Hero morph | `src/scripts/main.js:191-199` | `pin`: absent ; `pinSpacing`: absent ; `pinType`: absent ; `anticipatePin`: absent ; `scrub`: `0.42` desktop / `0.62` mobile ; `snap`: absent ; `start: "top top"` ; `end: "bottom bottom"` ; `invalidateOnRefresh: true` ; `fastScrollEnd`: absent ; `preventOverlaps`: absent |
-| Ascension | `src/scripts/immersive-sequence.js:396-423` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.65` desktop / `0.55` mobile ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
-| Méthode | `src/scripts/method-sequence.js:461-492` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
+| Hero morph | `src/scripts/main.js:210-218` | `pin`: absent ; `pinSpacing`: absent ; `pinType`: absent ; `anticipatePin`: absent ; `scrub`: `0.42` desktop / `0.62` mobile ; `snap`: absent ; `start: "top top"` ; `end: "bottom bottom"` ; `invalidateOnRefresh: true` ; `fastScrollEnd`: absent ; `preventOverlaps`: absent |
+| Ascension | `src/scripts/immersive-sequence.js:416-445` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.65` desktop / `0.55` mobile ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
+| Méthode | `src/scripts/method-sequence.js:474-514` | `pin: stage` ; `pinSpacing: false` ; `pinType: "transform"` ; `anticipatePin: 1` ; `scrub: 0.6` ; `snap`: absent du ScrollTrigger ; `start: "top top"` ; `end: "+=" + (section.offsetHeight - stage.offsetHeight)` ; `invalidateOnRefresh: true` ; `fastScrollEnd: true` ; `preventOverlaps`: absent |
 
 Les valeurs éditables sont conservées dans
 `src/components/ImmersiveSequence.astro:14-22` et
@@ -64,10 +69,14 @@ Impact : neutre. Aucun scroll vertical ne peut être recapturé par un snap.
 
 Constat :
 
-- un seul smooth scroll : Lenis, `main.js:91-121` ;
+- un seul smooth scroll : Lenis, `main.js:91-140` ;
 - Lenis est désactivé sur tactile et en mouvement réduit ;
 - `lerp: 0.09`, `smoothWheel: true`, `syncTouch: false`,
   `wheelMultiplier: 0.95` ;
+- `virtualScroll` multiplie `deltaY` par `1.25` seulement si le chemin de
+  l'événement traverse `[data-immersive-stage]` ou `[data-method-stage]` ;
+- un test hors immersion, avec trois impulsions de 100 px, parcourt toujours
+  285 px : le réglage global n'a donc pas changé ;
 - synchronisation correcte :
   `lenis.on("scroll", ScrollTrigger.update)` et
   `gsap.ticker.add(time => lenis.raf(time * 1000))` ;
@@ -75,7 +84,9 @@ Constat :
 - aucun `scrollerProxy`, inutile ici car Lenis pilote le scroll natif du
   document.
 
-Impact : neutre après correction. Le tactile reste entièrement natif.
+Impact : la sensation de résistance propre aux longues scènes épinglées est
+corrigée sans accélérer le reste de la page. Le tactile reste entièrement
+natif.
 
 ## 4. CSS susceptible d'influencer le scroll
 
@@ -143,6 +154,15 @@ Constat final :
 - `onUpdate` modifie seulement une cible ;
 - le dessin est coalescé par `requestAnimationFrame` ;
 - un index déjà dessiné n'est pas redessiné ;
+- la file d'attente runtime est bornée à sept frames autour de la cible et
+  abandonne les jobs devenus hors champ ;
+- si la frame exacte n'est pas encore prête, le canvas utilise la surface
+  décodée la plus proche dans une fenêtre de sept frames, avec progression
+  monotone ;
+- quand le canvas accuse plus de trois frames de retard, le préchargement des
+  voisines est suspendu temporairement afin de rendre la priorité à la cible ;
+- chaque fin de décodage réveille un seul prochain rendu via
+  `requestAnimationFrame` ;
 - le cache décodé est borné et suit la frame cible ;
 - DPR limité à `2`, et à `1.5` sur mobile/pointeur grossier ;
 - budgets canvas : 3,2 Mpx desktop, 1,8 Mpx mobile ;
@@ -150,7 +170,15 @@ Constat final :
   aucune tâche longue pendant les scrubs, donc sa complexité et ses différences
   Safari ne sont pas justifiées.
 
-Impact : aucune tâche longue de scroll mesurée.
+Mesure ciblée, ascension desktop sous CPU ×4, pour trois impulsions de
+1 000 px : avant cette passe, 28 frames affichées, gel maximal d'environ
+450 ms et 154 décodages ; après correction de la file, 78 frames distinctes,
+gel actif maximal de 92 ms et 114 décodages. Avec la traversée accélérée
+finale, la séquence quitte le pin sans capture, et l'intervalle maximal entre
+deux dessins pendant la phase rapide est de 25,5 ms.
+
+Impact : aucune tâche longue de scroll mesurée et plus aucun rattrapage visuel
+par grands paquets pendant le geste.
 
 ## 7. Nombre et poids des frames réellement servies
 
@@ -203,10 +231,10 @@ Impact : aggravant avant correction, corrigé.
 
 | Fichier | Modification | Justification |
 |---|---|---|
-| `src/scripts/frame-sequence.js` | Petit lot jouable, fond compressé, cible prioritaire, décodage à la demande et cache borné | Retirer l'attente bloquante et les dizaines de décodages inutiles pendant les sections précédentes |
-| `src/scripts/immersive-sequence.js` | Pin immédiat, distance réelle, scrub amorti conservé, `anticipatePin`, `fastScrollEnd`, rendu dédupliqué, resize différé, warm-up rapproché et canvas activé uniquement dans le pin | Supprimer le spacer tardif, le décalage `svh/innerHeight`, le rattrapage de sortie, les refresh mobiles et le travail graphique hors écran |
+| `src/scripts/frame-sequence.js` | Petit lot jouable, fond compressé, cible prioritaire, décodage à la demande, fenêtre runtime bornée, fallback décodé proche et cache borné | Retirer l'attente bloquante, abandonner les jobs périmés et éviter que le canvas attende une frame déjà dépassée |
+| `src/scripts/immersive-sequence.js` | Pin immédiat, distance réelle, scrub amorti conservé, `anticipatePin`, `fastScrollEnd`, rendu monotone, préfetch adaptatif, resize différé, warm-up rapproché et canvas activé uniquement dans le pin | Supprimer le spacer tardif, le décalage `svh/innerHeight`, le rattrapage de sortie, les refresh mobiles et les gels de frame au scroll rapide |
 | `src/scripts/method-sequence.js` | Même stratégie, sans changer les cinq étapes ni leur label | Garantir le même comportement sur la seconde séquence |
-| `src/scripts/main.js` | Contrôleurs importés immédiatement ; restauration limitée aux deux plages pinned | Créer les pins avant les frames et préserver un reload à mi-page |
+| `src/scripts/main.js` | Contrôleurs importés immédiatement ; restauration limitée aux deux plages pinned ; multiplicateur de molette local aux deux stages | Créer les pins avant les frames, préserver un reload à mi-page et retirer la sensation d'enfermement sans modifier les autres sections |
 | `src/styles/global.css` | Le loader méthode reste visible jusqu'à `is-loaded` | Conserver la progression 0 → 100 % pendant le chargement de fond |
 
 ## Commits isolés
@@ -220,6 +248,8 @@ Impact : aggravant avant correction, corrigé.
 7. `217b936` — `perf(frames): differer les visuels jusqu a l approche`
 8. `9a39440` — `perf(frames): decoder le fond uniquement a la demande`
 9. `738a0e9` — `perf(frames): rapprocher le warmup des sections 3d`
+10. `d00d79f` — `perf(frames): prioriser les images visibles au scroll rapide`
+11. `2b75bd5` — `fix(scroll): liberer la molette dans les immersions`
 
 Chaque changement conceptuel peut être testé ou annulé séparément.
 
@@ -227,14 +257,15 @@ Chaque changement conceptuel peut être testé ou annulé séparément.
 
 | # | Résultat | Mesure |
 |---|---|---|
-| 1. Trois crans rapides, ascension desktop | **OK** | Entrée/sortie dans les deux sens, 4 scénarios, zéro inversion et frontière toujours traversée |
-| 2. Swipe rapide iOS/Android | **OK automatisé** | Profils Safari iOS 390 × 844 et Chrome Android 412 × 915, 16 traversées entrée/sortie, zéro inversion, zéro overflow horizontal |
-| 3. Méthode et transition suivante | **OK** | 4 frontières desktop + 8 tactiles ; sortie vers `#transformation`, aucun palier ni shift |
-| 4. Aucune long task > 50 ms pendant le scroll CPU ×4 | **OK** | Zéro entrée `longtask` sur les deux séquences desktop et mobile ; RAF max 16,8 ms |
+| 1. Trois crans rapides, ascension desktop | **OK** | Pointeur sur le canvas, entrée à +120 px : 3 impulsions de 1 000 px produisent 3 562 px, traversent les 2 880 px du pin, zéro inversion, CLS 0 |
+| 2. Swipe rapide iOS/Android | **OK automatisé** | Contrôles précédents iOS/Android conservés ; nouvelle passe Android 390 × 844 sous CPU ×4 : ascension traversée en 2 gestes, méthode en 4, zéro inversion, CLS 0, zéro overflow |
+| 3. Méthode et transition suivante | **OK** | Pointeur sur le canvas : 5 impulsions produisent 5 937 px, traversent les 5 220 px du pin et arrivent dans `#transformation`, sans palier ni shift |
+| 4. Aucune long task > 50 ms pendant le scroll CPU ×4 | **OK** | Zéro entrée `longtask` sur les deux séquences desktop et mobile, molette rapide, trackpad simulé et swipe |
 | 5. CLS = 0 aux frontières | **OK** | Zéro `layout-shift` aux entrées et sorties ; Lighthouse global : 0,005 mobile, 0 desktop |
 | 6. Performance mobile et INP | **OK local / production à confirmer** | Lighthouse mobile 98, identique à la dernière référence de production, TBT 0 ms ; événements tactiles max 40 ms, délai max 2,9 ms |
-| 7. Reload à mi-page | **OK** | Desktop méthode et mobile ascension : `deltaY = 0`, même frame avant/après |
+| 7. Reload à mi-page | **OK** | Desktop méthode : `scrollY 11568`, frame 84 et étape 3 identiques avant/après ; `deltaY = 0`, `deltaFrame = 0` |
 | 8. Scroll précédant les sections 3D | **OK** | Mobile et desktop CPU ×4 : zéro tâche longue, zéro inversion ; 6/91 et 8/181 images seulement décodées, canvas `1 × 1` avant l'entrée |
+| 9. Molette/trackpad à l'intérieur des canvas | **OK** | Molette : gain local de 25 %, zéro recapture ; trackpad simulé 24 × 25 px : 712 px continus, 29 frames monotones, zéro inversion et zéro tâche longue |
 
 La passe PageSpeed Insights publique reste à refaire après déploiement, car
 localhost ne mesure ni CDN ni cache Vercel. L'INP de terrain nécessite des
@@ -257,6 +288,10 @@ données réelles ; la mesure locale Event Timing reste très inférieure à
 - dernière frame atteinte environ 12 ms après une sortie rapide ;
 - scroll rapide desktop et tactile : aucune valeur de scroll ne repart en
   arrière.
+- scroll inverse dans la méthode : `deltaY = -3562`, 78 frames affichées de
+  138 à 16, zéro frame et zéro valeur de scroll dans le mauvais sens ;
+- passage complet tactile 390 × 844 : CLS 0 aux deux pins, étape finale
+  « Optimiser » conservée et une seule capsule active ;
 - ascension mobile après décodage à la demande : 91/91 frames distinctes ;
 - méthode mobile : 121/121 frames distinctes et cinq changements d'étape ;
 - Lighthouse mobile après le correctif du pré-scroll : 98/100, LCP 2,0 s,
