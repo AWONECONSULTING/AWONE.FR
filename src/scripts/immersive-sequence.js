@@ -136,6 +136,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
     frameHeight:sourceHeight,
     concurrency:useMobileFrames ? CONFIG.mobileConcurrency : CONFIG.desktopConcurrency,
     runtimeConcurrency:useMobileFrames ? 2 : 3,
+    runtimeWindow:7,
     maxDecoded:useMobileFrames ? 22 : 16,
     playableCount:useMobileFrames ? 6 : 8,
     formats:['avif', 'webp'],
@@ -149,6 +150,7 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
       ];
     },
     onProgress:scheduleLoaderProgress,
+    onDecode:schedulePaint,
     onReady:function(){
       setLoaderProgress(frameCount, frameCount);
       section.classList.remove('is-loading');
@@ -320,11 +322,26 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
   }
 
   function drawFrame(index){
+    var resolvedIndex = index;
     var image = store.get(index);
-    if(!image || !canvas.width || !canvas.height) return false;
+    if(!image){
+      var fallback = store.getClosest(index, frameDirection, 7);
+      if(!fallback) return -1;
+      resolvedIndex = fallback.index;
+      image = fallback.image;
+      if(
+        drawnFrame >= 0 &&
+        ((frameDirection >= 0 && resolvedIndex < drawnFrame) ||
+          (frameDirection < 0 && resolvedIndex > drawnFrame))
+      ){
+        return -1;
+      }
+    }
+    if(resolvedIndex === drawnFrame) return -1;
+    if(!canvas.width || !canvas.height) return -1;
     var imageWidth = image.naturalWidth;
     var imageHeight = image.naturalHeight;
-    if(!imageWidth || !imageHeight) return false;
+    if(!imageWidth || !imageHeight) return -1;
     var scale = Math.max(canvas.width / imageWidth, canvas.height / imageHeight);
     var width = imageWidth * scale;
     var height = imageHeight * scale;
@@ -337,35 +354,39 @@ import { createDecodedFrameStore, registerFrameSequence } from './frame-sequence
       width,
       height
     );
-    canvas.dataset.frame = String(index + 1);
+    canvas.dataset.frame = String(resolvedIndex + 1);
     section.classList.add('is-canvas-ready');
-    return true;
+    return resolvedIndex;
   }
 
   function requestFrameWindow(index){
     if(queuedFrame === index) return;
     queuedFrame = index;
-    var offsets = frameDirection >= 0
-      ? [1,2,3,-1,-2,4]
-      : [-1,-2,-3,1,2,-4];
+    var isCatchingUp = drawnFrame >= 0 && Math.abs(index - drawnFrame) > 3;
+    var offsets = isCatchingUp
+      ? []
+      : frameDirection >= 0
+        ? [1,2,3,-1,-2,4]
+        : [-1,-2,-3,1,2,-4];
     store.setTarget(index);
     store.request(index, true).then(function(){
       if(queuedFrame === index) queuedFrame = -1;
       schedulePaint();
     });
-    store.prefetch(offsets.map(function(offset){ return index + offset; }));
+    if(offsets.length){
+      store.prefetch(offsets.map(function(offset){ return index + offset; }));
+    }
   }
 
   function flushPaint(){
     paintRaf = 0;
     if(sequenceActive && drawnFrame !== targetFrame){
-      if(drawFrame(targetFrame)){
-        drawnFrame = targetFrame;
-        queuedFrame = -1;
-        requestFrameWindow(targetFrame);
-      } else {
-        requestFrameWindow(targetFrame);
+      var renderedFrame = drawFrame(targetFrame);
+      if(renderedFrame >= 0){
+        drawnFrame = renderedFrame;
+        if(renderedFrame === targetFrame) queuedFrame = -1;
       }
+      requestFrameWindow(targetFrame);
     }
   }
 

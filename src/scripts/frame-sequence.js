@@ -138,6 +138,10 @@ export function createDecodedFrameStore(options){
   var maxDecoded = Math.max(4, Math.min(frameCount, options.maxDecoded || 18));
   var playableCount = Math.max(1, Math.min(frameCount, options.playableCount || 12));
   var runtimeConcurrency = Math.max(1, options.runtimeConcurrency || 2);
+  var runtimeWindow = Math.max(
+    3,
+    Math.min(maxDecoded, options.runtimeWindow || 7)
+  );
   var runtimeActive = 0;
   var runtimeQueue = [];
   var runtimePromises = new Map();
@@ -453,6 +457,9 @@ export function createDecodedFrameStore(options){
           source.objectUrl = decoded.objectUrl;
           source.touched = ++touchCounter;
           trimDecoded();
+          if(typeof options.onDecode === 'function'){
+            options.onDecode(job.index);
+          }
           return source.image;
         }).catch(function(){
           return null;
@@ -530,7 +537,10 @@ export function createDecodedFrameStore(options){
     setTarget:function(index){
       desiredIndex = Math.max(0, Math.min(frameCount - 1, Math.round(index)));
       runtimeQueue = runtimeQueue.filter(function(job){
-        if(Math.abs(job.index - desiredIndex) <= maxDecoded) return true;
+        /* Une molette rapide peut déplacer la cible de plusieurs dizaines de
+           frames avant que les anciennes requêtes démarrent. Les conserver
+           monopoliserait les workers avec des images déjà hors écran. */
+        if(Math.abs(job.index - desiredIndex) <= runtimeWindow) return true;
         if(runtimePromises.get(job.index) === job.promise){
           runtimePromises.delete(job.index);
         }
@@ -543,6 +553,30 @@ export function createDecodedFrameStore(options){
       var source = sources[index];
       if(source && source.image){ source.touched = ++touchCounter; return source.image; }
       return null;
+    },
+    getClosest:function(index, direction, maxDistance){
+      index = Math.max(0, Math.min(frameCount - 1, Math.round(index)));
+      var limit = Math.max(1, maxDistance || runtimeWindow);
+      var bestIndex = -1;
+      var bestScore = Infinity;
+      sources.forEach(function(source, sourceIndex){
+        if(!source || !source.image) return;
+        var distance = Math.abs(sourceIndex - index);
+        if(distance > limit) return;
+        /* À distance égale, conserver une frame déjà parcourue plutôt que
+           d'anticiper le récit. Le score reste dominé par la proximité. */
+        var isAhead = direction >= 0
+          ? sourceIndex > index
+          : sourceIndex < index;
+        var score = distance + (isAhead ? .25 : 0);
+        if(score < bestScore){
+          bestIndex = sourceIndex;
+          bestScore = score;
+        }
+      });
+      if(bestIndex < 0) return null;
+      sources[bestIndex].touched = ++touchCounter;
+      return {index:bestIndex, image:sources[bestIndex].image};
     },
     isPlayable:isPlayable,
     isReady:function(){ return phase === 'ready'; },
