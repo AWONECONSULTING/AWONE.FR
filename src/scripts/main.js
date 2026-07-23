@@ -5,6 +5,7 @@ import { gsap, ScrollTrigger } from './motion.js';
    à distance par leurs IntersectionObserver respectifs. */
 import './immersive-sequence.js';
 import './method-sequence.js';
+import './instagram-feed.js';
 
 /* Chrome peut restaurer la page avant que ScrollTrigger ait fini d'installer
    les spacers. On ne reprend la main que lors d'un rechargement effectué au

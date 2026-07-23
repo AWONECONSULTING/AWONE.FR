@@ -1474,39 +1474,116 @@ section.play .b-comet::after{animation:b-ring .5s ease-out calc(var(--bd,0s) + .
 @media (max-width:820px){.fit-grid{grid-template-columns:1fr}}
 
 /* ══════════════ INSTAGRAM ══════════════ */
-.ig-section{padding:0 clamp(22px,6vw,90px) clamp(3rem,7vh,4.5rem);position:relative;z-index:1}
-.ig-card{
-  display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;
-  max-width:760px;margin:0 auto;padding:1.4rem 1.6rem;border-radius:22px;
-  text-decoration:none;color:var(--blanc);
-  background:rgba(252,252,252,.03);
-  border:1px solid rgba(252,252,252,.11);
-  transition:transform .3s,border-color .3s,box-shadow .3s;
+.ig-section{
+  position:relative;z-index:1;isolation:isolate;overflow:hidden;
+  padding:clamp(88px,11vh,138px) clamp(22px,6vw,90px);
+  border-top:1px solid rgba(252,252,252,.07);
+  background:
+    radial-gradient(circle at 78% 42%,rgba(254,171,255,.1),transparent 31rem),
+    radial-gradient(circle at 15% 72%,rgba(255,255,125,.055),transparent 27rem),
+    var(--noir);
 }
-.ig-card:hover{
-  transform:translateY(-3px);
-  border-color:rgba(254,171,255,.5);
-  box-shadow:0 18px 48px rgba(10,10,10,.5), 0 0 30px rgba(254,171,255,.12);
+.ig-section::before{
+  content:"";position:absolute;z-index:-1;inset:8% 5% auto auto;
+  width:min(44vw,520px);aspect-ratio:1;border-radius:50%;
+  border:1px solid rgba(252,252,252,.055);
+  box-shadow:0 0 0 42px rgba(252,252,252,.012),0 0 0 84px rgba(252,252,252,.008);
+}
+.ig-feed-layout{
+  width:100%;max-width:1120px;margin:0 auto;
+  display:grid;grid-template-columns:minmax(0,.8fr) minmax(326px,560px);
+  align-items:center;gap:clamp(3rem,7vw,7.5rem);
+}
+.ig-intro{position:relative;z-index:2}
+.ig-intro .sec{max-width:11ch}
+.ig-intro .lead{max-width:42ch}
+.ig-profile-card{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;
+  gap:1rem;max-width:410px;margin-top:2rem;padding:.85rem 1rem;
+  border:1px solid rgba(252,252,252,.11);border-radius:20px;
+  color:var(--blanc);text-decoration:none;background:rgba(252,252,252,.035);
+  transition:transform .35s cubic-bezier(.22,1,.36,1),border-color .3s,background .3s;
+}
+.ig-profile-card:hover{
+  transform:translateY(-3px);border-color:rgba(254,171,255,.46);
+  background:rgba(252,252,252,.06);
 }
 .ig-ring{
-  width:56px;height:56px;flex:none;border-radius:18px;
+  width:52px;height:52px;flex:none;border-radius:17px;
   display:flex;align-items:center;justify-content:center;color:var(--blanc);
   background:linear-gradient(135deg,var(--jaune),var(--orange) 35%,var(--rose) 70%,var(--lavande));
   box-shadow:0 8px 24px rgba(254,171,255,.28);
 }
-.ig-ring svg{width:26px;height:26px;color:#0A0A0A}
-.ig-txt{flex:1;min-width:200px;display:grid;gap:.2rem}
-.ig-txt strong{font-family:var(--font-titre);font-weight:600;font-size:1.05rem}
-.ig-txt span{font-size:.8rem;line-height:1.5;color:rgba(252,252,252,.55)}
-.ig-btn{
-  display:inline-flex;align-items:center;gap:.45rem;
-  padding:.7rem 1.35rem;border-radius:999px;
-  font-size:.85rem;font-weight:700;color:var(--noir);
-  background:var(--jaune);
-  transition:background .25s;
+.ig-ring svg{width:25px;height:25px;color:#0A0A0A}
+.ig-profile-copy{min-width:0;display:grid;gap:.12rem}
+.ig-profile-copy strong{
+  overflow:hidden;text-overflow:ellipsis;
+  font-family:var(--font-titre);font-size:1rem;font-weight:600;
 }
-.ig-card:hover .ig-btn{background:var(--blanc)}
+.ig-profile-copy span{font-size:.76rem;color:rgba(252,252,252,.55)}
+.ig-profile-arrow{color:var(--jaune);transition:transform .3s}
+.ig-profile-card:hover .ig-profile-arrow{transform:translate(2px,-2px)}
+.ig-feed-shell{
+  width:100%;max-width:560px;justify-self:end;padding:12px;
+  border:1px solid rgba(252,252,252,.13);border-radius:30px;
+  background:linear-gradient(145deg,rgba(252,252,252,.085),rgba(252,252,252,.025));
+  box-shadow:0 35px 90px rgba(0,0,0,.48),0 0 65px rgba(254,171,255,.075);
+  transition:transform .45s cubic-bezier(.22,1,.36,1),border-color .3s;
+}
+.ig-feed-shell:hover{transform:translateY(-4px);border-color:rgba(252,252,252,.23)}
+.ig-feed-bar,.ig-feed-footer{
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:.35rem .55rem .8rem;font-size:.67rem;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:rgba(252,252,252,.5);
+}
+.ig-feed-live{display:inline-flex;align-items:center;gap:.5rem;color:rgba(252,252,252,.76)}
+.ig-feed-live i{
+  width:7px;height:7px;border-radius:50%;background:var(--vert);
+  box-shadow:0 0 0 4px rgba(193,241,170,.1),0 0 14px rgba(193,241,170,.52);
+}
+.ig-feed-viewport{
+  position:relative;width:100%;max-width:520px;height:min(505px,calc((100vw - 68px) * .9712));
+  margin:0 auto;overflow:hidden;border-radius:19px;background:#fff;
+}
+.ig-feed-scale{
+  position:absolute;inset:0 auto auto 0;width:520px;height:505px;
+  transform:scale(var(--ig-feed-scale,1));transform-origin:0 0;
+}
+.ig-feed-frame{
+  display:block;width:520px;height:505px;border:0;background:#fff;
+  pointer-events:none;
+}
+.ig-feed-overlay{position:absolute;inset:0;z-index:2;border-radius:19px}
+.ig-feed-overlay:focus-visible{
+  outline:3px solid var(--jaune);outline-offset:-7px;
+}
+.ig-feed-footer{
+  padding:.85rem .55rem .35rem;color:rgba(252,252,252,.72);
+  text-decoration:none;transition:color .25s;
+}
+.ig-feed-footer svg{transition:transform .3s}
+.ig-feed-footer:hover{color:var(--jaune)}
+.ig-feed-footer:hover svg{transform:translate(2px,-2px)}
 footer .ig-link{display:inline-flex;align-items:center;gap:.45rem}
+@media (max-width:900px){
+  .ig-feed-layout{grid-template-columns:1fr;gap:3.5rem}
+  .ig-intro{max-width:600px}
+  .ig-intro .sec{max-width:15ch}
+  .ig-feed-shell{justify-self:start}
+}
+@media (max-width:600px){
+  .ig-section{padding:84px 14px 92px}
+  .ig-section::before{width:82vw;inset:27% -25% auto auto}
+  .ig-feed-layout{gap:2.6rem}
+  .ig-intro{padding:0 8px}
+  .ig-profile-card{margin-top:1.55rem;padding:.7rem .75rem;border-radius:18px}
+  .ig-ring{width:46px;height:46px;border-radius:15px}
+  .ig-ring svg{width:22px;height:22px}
+  .ig-feed-shell{padding:8px;border-radius:24px}
+  .ig-feed-bar{padding:.3rem .45rem .65rem}
+  .ig-feed-footer{padding:.72rem .45rem .28rem;font-size:.61rem}
+  .ig-feed-viewport{height:calc((100vw - 44px) * .9712);border-radius:17px}
+}
 
 /* ══════════════ CTA STICKY MOBILE ══════════════ */
 /* CTA flottant permanent : la prise de RDV ne quitte jamais l'écran */
